@@ -1,0 +1,678 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  PROAB
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+enum EstimateLineItemType {
+  MATERIAL
+  LABOR
+  MACHINE
+  SERVICE
+  OTHER
+}
+
+enum TransactionType {
+  OPENING_BALANCE
+  INCOMING
+  OUTGOING
+  RETURN
+  ADJUSTMENT
+}
+
+enum TransactionStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+
+enum DeliveryStatus {
+  NOT_APPLICABLE
+  EXPECTED
+  IN_TRANSIT
+  DELIVERED
+  OVERDUE
+}
+
+enum ConfirmationStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+
+enum MaterialRequestStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  FULFILLED
+}
+
+enum BrigadeStatus {
+  PLANNED
+  ACTIVE
+  ON_BREAK
+  COMPLETED
+}
+
+enum MachineStatus {
+  AVAILABLE
+  IN_USE
+  MAINTENANCE
+  RETIRED
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum AlertStatus {
+  NEW
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum AlertType {
+  MATERIAL_OVERUSE
+  MATERIAL_SHORTAGE
+  MATERIAL_EXCESS
+  MATERIAL_UNUSED_LONG
+  MATERIAL_IN_TRANSIT
+  DELIVERY_DELAY
+  BRIGADE_BEHIND_PLAN
+  WORKER_HOURS_OVER_PLAN
+  MACHINE_HOURS_OVER_PLAN
+  PHASE_COST_OVERRUN
+  ESTIMATE_DEVIATION
+  MISSING_DATA
+}
+
+enum ReportType {
+  GENERAL_SUMMARY
+  ESTIMATE_VS_ACTUAL
+  MATERIALS_USAGE
+  WAREHOUSE_STATE
+  STOCK_MOVEMENT
+  BRIGADE_WORKERS
+  MACHINE_HOURS
+  CONSTRUCTION_PHASE
+  FINANCIAL
+  ALERT_RISK
+}
+
+enum ReportPeriod {
+  MONTHLY
+  QUARTERLY
+  HALF_YEARLY
+  YEARLY
+  FULL_PROJECT
+}
+
+enum ZoneStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  DELAYED
+  OVER_BUDGET
+}
+
+enum ZoneGeometryType {
+  BOX
+  CYLINDER
+  CUSTOM
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+  projects  Project[]
+  materials Material[]
+  units     Unit[]
+  suppliers Supplier[]
+  contracts Contract[]
+  deliveries Delivery[]
+  auditLogs AuditLog[]
+
+  @@map("tenants")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  tenantId      String
+  fullName      String
+  username      String
+  email         String?
+  phone         String?
+  passwordHash  String
+  role          Role      @default(PROAB)
+  status        UserStatus @default(ACTIVE)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  projectAssignments ProjectUserAssignment[]
+  createdEstimateLines EstimateLine[] @relation("CreatedBy")
+  warehouseTransactions WarehouseTransaction[]
+  confirmedTransactions WarehouseTransaction[] @relation("ConfirmedBy")
+  materialRequests MaterialRequest[]
+  approvedRequests MaterialRequest[] @relation("ApprovedBy")
+  brigadeWorkLogs BrigadeWorkLog[]
+  machineWorkLogs MachineWorkLog[]
+  reportExports ReportExport[]
+  auditLogs AuditLog[]
+
+  @@unique([tenantId, username])
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+model Project {
+  id              String   @id @default(cuid())
+  tenantId        String
+  name            String
+  address         String?
+  clientName      String?
+  startDate       DateTime?
+  plannedEndDate  DateTime?
+  status          ProjectStatus @default(PLANNING)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users           ProjectUserAssignment[]
+  estimates       Estimate[]
+  estimateLines   EstimateLine[]
+  constructionPhases ConstructionPhase[]
+  warehouseItems  WarehouseItem[]
+  warehouseTransactions WarehouseTransaction[]
+  materialRequests MaterialRequest[]
+  brigades        Brigade[]
+  brigadeWorkLogs BrigadeWorkLog[]
+  machines        Machine[]
+  machineWorkLogs MachineWorkLog[]
+  zones           Zone[]
+  alerts          Alert[]
+  reportExports   ReportExport[]
+
+  @@map("projects")
+}
+
+model ProjectUserAssignment {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  role      Role     @default(PROAB)
+  createdAt DateTime @default(now())
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@map("project_user_assignments")
+}
+
+model Estimate {
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String
+  description String?
+  importedAt  DateTime @default(now())
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lines       EstimateLine[]
+
+  @@map("estimates")
+}
+
+model EstimateLine {
+  id                String   @id @default(cuid())
+  estimateId        String
+  projectId         String
+  code              String
+  name              String
+  category          String?
+  phaseId           String?
+  zoneId            String?
+  unitId            String?
+  plannedQuantity   Float    @default(0)
+  usedQuantity      Float    @default(0)
+  remainingQuantity Float    @default(0)
+  plannedUnitPrice  Float?
+  plannedTotalPrice Float?
+  itemType          EstimateLineItemType @default(MATERIAL)
+  notes             String?
+  createdBy         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  estimate          Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  phase             ConstructionPhase? @relation(fields: [phaseId], references: [id])
+  zone              Zone?    @relation(fields: [zoneId], references: [id])
+  unit              Unit?    @relation(fields: [unitId], references: [id])
+  createdByUser     User?    @relation("CreatedBy", fields: [createdBy], references: [id])
+  warehouseTransactions WarehouseTransaction[]
+  brigadeWorkLogs   BrigadeWorkLog[]
+
+  @@map("estimate_lines")
+}
+
+model Material {
+  id            String   @id @default(cuid())
+  tenantId      String
+  code          String
+  name          String
+  category      String?
+  defaultUnitId String?
+  description   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  defaultUnit   Unit?    @relation(fields: [defaultUnitId], references: [id])
+  warehouseItems WarehouseItem[]
+  transactions   WarehouseTransaction[] @relation("TransactionMaterial")
+
+  @@unique([tenantId, code])
+  @@map("materials")
+}
+
+model Unit {
+  id        String   @id @default(cuid())
+  tenantId  String
+  code      String
+  name      String
+  createdAt DateTime @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  materialsWithDefault Material[]
+  estimateLines        EstimateLine[]
+
+  @@unique([tenantId, code])
+  @@map("units")
+}
+
+model ConstructionPhase {
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String
+  description String?
+  order       Int      @default(0)
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project      Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  estimateLines EstimateLine[]
+  warehouseTransactions WarehouseTransaction[]
+  zones Zone[]
+
+  @@map("construction_phases")
+}
+
+model Zone {
+  id                String   @id @default(cuid())
+  projectId         String
+  name              String
+  floor             String?
+  section           String?
+  phaseId           String?
+  progressPercent   Float    @default(0)
+  status            ZoneStatus @default(NOT_STARTED)
+  geometryType      ZoneGeometryType @default(BOX)
+  geometryConfigJson String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  phase             ConstructionPhase? @relation(fields: [phaseId], references: [id])
+  estimateLines     EstimateLine[]
+  brigadeWorkLogs   BrigadeWorkLog[]
+  machineWorkLogs   MachineWorkLog[]
+  warehouseTransactions WarehouseTransaction[]
+
+  @@map("zones")
+}
+
+model WarehouseItem {
+  id                  String   @id @default(cuid())
+  projectId           String
+  materialId          String
+  currentBalance      Float    @default(0)
+  reservedQuantity    Float    @default(0)
+  availableQuantity   Float    @default(0)
+  plannedTotal        Float    @default(0)
+  usedQuantity        Float    @default(0)
+  remainingEstimate   Float    @default(0)
+  supplierId          String?
+  contractId          String?
+  deliveryStatus      DeliveryStatus @default(NOT_APPLICABLE)
+  inTransitQuantity   Float    @default(0)
+  expectedArrivalDate DateTime?
+  estimatedDaysRemaining Int?
+  lastMovementDate    DateTime?
+  status              String   @default("NORMAL")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  project             Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  material            Material @relation(fields: [materialId], references: [id])
+  supplier            Supplier? @relation(fields: [supplierId], references: [id])
+  contract            Contract? @relation(fields: [contractId], references: [id])
+  transactions        WarehouseTransaction[]
+
+  @@unique([projectId, materialId])
+  @@map("warehouse_items")
+}
+
+model WarehouseTransaction {
+  id                String   @id @default(cuid())
+  projectId         String
+  materialId        String
+  warehouseItemId   String?
+  estimateLineId    String?
+  zoneId            String?
+  phaseId           String?
+  type              TransactionType
+  quantity          Float
+  unitId            String
+  transactionDate   DateTime @default(now())
+  status            TransactionStatus @default(PENDING)
+  sourceDestination String?
+  createdByUserId   String
+  confirmedByUserId String?
+  supplierId        String?
+  contractId        String?
+  deliveryId        String?
+  notes             String?
+  createdAt         DateTime @default(now())
+
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  material          Material? @relation("TransactionMaterial", fields: [materialId], references: [id])
+  warehouseItem     WarehouseItem? @relation(fields: [warehouseItemId], references: [id])
+  estimateLine      EstimateLine? @relation(fields: [estimateLineId], references: [id])
+  zone              Zone?    @relation(fields: [zoneId], references: [id])
+  phase             ConstructionPhase? @relation(fields: [phaseId], references: [id])
+  createdByUser     User     @relation(fields: [createdByUserId], references: [id])
+  confirmedByUser   User?    @relation("ConfirmedBy", fields: [confirmedByUserId], references: [id])
+  supplier          Supplier? @relation(fields: [supplierId], references: [id])
+  contract          Contract? @relation(fields: [contractId], references: [id])
+  delivery          Delivery? @relation(fields: [deliveryId], references: [id])
+
+  @@map("warehouse_transactions")
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  contact   String?
+  phone     String?
+  email     String?
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  warehouseItems WarehouseItem[]
+  transactions   WarehouseTransaction[]
+
+  @@map("suppliers")
+}
+
+model Contract {
+  id          String   @id @default(cuid())
+  tenantId    String
+  number      String
+  supplierId  String
+  startDate   DateTime?
+  endDate     DateTime?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  warehouseItems WarehouseItem[]
+  transactions   WarehouseTransaction[]
+
+  @@unique([tenantId, number])
+  @@map("contracts")
+}
+
+model Delivery {
+  id                String   @id @default(cuid())
+  tenantId          String
+  supplierId        String
+  expectedDate      DateTime
+  actualDate        DateTime?
+  status            DeliveryStatus @default(EXPECTED)
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  transactions      WarehouseTransaction[]
+
+  @@map("deliveries")
+}
+
+model IncomingConfirmation {
+  id                String   @id @default(cuid())
+  transactionId     String   @unique
+  requestedQuantity Float
+  confirmedQuantity Float?
+  status            ConfirmationStatus @default(PENDING)
+  confirmedBy       String?
+  confirmedAt       DateTime?
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("incoming_confirmations")
+}
+
+model MaterialRequest {
+  id          String   @id @default(cuid())
+  projectId   String
+  requestedBy String
+  materialId  String
+  quantity    Float
+  unitId      String
+  purpose     String?
+  status      MaterialRequestStatus @default(DRAFT)
+  approvedBy  String?
+  approvedAt  DateTime?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requestedByUser User @relation(fields: [requestedBy], references: [id])
+  approvedByUser User? @relation("ApprovedBy", fields: [approvedBy], references: [id])
+
+  @@map("material_requests")
+}
+
+model Brigade {
+  id              String   @id @default(cuid())
+  projectId       String
+  name            String
+  type            String?
+  responsiblePerson String?
+  numberOfWorkers Int      @default(0)
+  startDate       DateTime?
+  expectedEndDate DateTime?
+  actualEndDate   DateTime?
+  paymentSchedule String?
+  status          BrigadeStatus @default(PLANNED)
+  plannedProgress Float    @default(0)
+  actualProgress  Float    @default(0)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignments     BrigadeAssignment[]
+  workLogs        BrigadeWorkLog[]
+
+  @@map("brigades")
+}
+
+model BrigadeAssignment {
+  id        String   @id @default(cuid())
+  brigadeId String
+  userId    String
+  startDate DateTime?
+  endDate   DateTime?
+  createdAt DateTime @default(now())
+
+  brigade   Brigade  @relation(fields: [brigadeId], references: [id], onDelete: Cascade)
+
+  @@map("brigade_assignments")
+}
+
+model BrigadeWorkLog {
+  id                String   @id @default(cuid())
+  brigadeId         String
+  projectId         String
+  phaseId           String?
+  zoneId            String?
+  workDate          DateTime @default(now())
+  workDescription   String?
+  workerCount       Int      @default(0)
+  hoursWorked       Float    @default(0)
+  outputProgress    Float    @default(0)
+  estimateLineId    String?
+  createdBy         String
+  createdAt         DateTime @default(now())
+
+  brigade           Brigade  @relation(fields: [brigadeId], references: [id], onDelete: Cascade)
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  zone              Zone?    @relation(fields: [zoneId], references: [id])
+  estimateLine      EstimateLine? @relation(fields: [estimateLineId], references: [id])
+  createdByUser     User     @relation(fields: [createdBy], references: [id])
+
+  @@map("brigade_work_logs")
+}
+
+model Machine {
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String
+  type        String?
+  model       String?
+  status      MachineStatus @default(AVAILABLE)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workLogs    MachineWorkLog[]
+
+  @@map("machines")
+}
+
+model MachineWorkLog {
+  id          String   @id @default(cuid())
+  machineId   String
+  projectId   String
+  phaseId     String?
+  zoneId      String?
+  workDate    DateTime @default(now())
+  hoursWorked Float    @default(0)
+  description String?
+  operatorName String?
+  createdBy   String
+  createdAt   DateTime @default(now())
+
+  machine     Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  zone        Zone?    @relation(fields: [zoneId], references: [id])
+  createdByUser User   @relation(fields: [createdBy], references: [id])
+
+  @@map("machine_work_logs")
+}
+
+model Alert {
+  id                String   @id @default(cuid())
+  projectId         String
+  type              AlertType
+  severity          AlertSeverity @default(INFO)
+  title             String
+  message           String
+  relatedEntityType String?
+  relatedEntityId   String?
+  status            AlertStatus @default(NEW)
+  createdAt         DateTime @default(now())
+  resolvedAt        DateTime?
+
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("alerts")
+}
+
+model ReportExport {
+  id          String   @id @default(cuid())
+  projectId   String
+  reportType  ReportType
+  period      ReportPeriod
+  format      String   @default("xlsx")
+  filePath    String?
+  generatedBy String
+  createdAt   DateTime @default(now())
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  generatedByUser User @relation(fields: [generatedBy], references: [id])
+
+  @@map("report_exports")
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  tenantId    String
+  userId      String
+  action      String
+  entityType  String
+  entityId    String?
+  details     String?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("audit_logs")
+}

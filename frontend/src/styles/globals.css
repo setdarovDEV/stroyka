@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 60 16% 96%;
+    --foreground: 60 8% 9%;
+    --card: 0 0% 100%;
+    --card-foreground: 60 8% 9%;
+    --primary: 145 23% 30%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 60 14% 93%;
+    --secondary-foreground: 60 8% 9%;
+    --muted: 60 14% 93%;
+    --muted-foreground: 195 7% 41%;
+    --accent: 37 71% 42%;
+    --accent-foreground: 60 8% 9%;
+    --destructive: 4 74% 40%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 60 12% 83%;
+    --input: 60 12% 83%;
+    --ring: 145 23% 30%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  height: 100vh;
+}
+
+#app {
+  height: 100vh;
+}

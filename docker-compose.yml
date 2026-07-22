@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: stroyka-postgres
+    environment:
+      POSTGRES_DB: stroyka
+      POSTGRES_USER: stroyka
+      POSTGRES_PASSWORD: stroyka123
+    ports:
+      - "5433:5432"
+    volumes:
+      - stroyka-pgdata:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./backend
+    container_name: stroyka-backend
+    environment:
+      DATABASE_URL: postgresql://stroyka:stroyka123@postgres:5432/stroyka?schema=public
+      JWT_SECRET: stroyka-secret-key-change-in-production
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+    volumes:
+      - ./backend/prisma:/app/prisma
+    command: >
+      sh -c "bun run prisma:deploy && bun run start:prod"
+
+volumes:
+  stroyka-pgdata:
