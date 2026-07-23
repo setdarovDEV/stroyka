@@ -8,7 +8,7 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
-    allowedHosts: ['isidioid-overventurous-rita.ngrok-free.dev'],
+    allowedHosts: ['isidioid-overventurous-rita.ngrok-free.dev', 'dd35-188-113-210-117.ngrok-free.app'],
     proxy: {
       '^/(auth|users|projects|estimates|estimate-lines|warehouse|warehouse-transactions|material-requests|brigades|work-logs|machines|machine-logs|dashboard|alerts|reports|zones|audit-log)': {
         target: 'http://localhost:3000',
