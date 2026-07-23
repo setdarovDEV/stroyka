@@ -25,8 +25,9 @@ async function bootstrap() {
     console.warn('API reference disabled:', error instanceof Error ? error.message : error);
   }
 
-  await app.listen(3000);
-  console.log('Backend running on http://localhost:3000');
-  console.log('API reference running on http://localhost:3000/reference');
+  const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  await app.listen(port);
+  console.log(`Backend running on http://localhost:${port}`);
+  console.log(`API reference running on http://localhost:${port}/reference`);
 }
 bootstrap();
