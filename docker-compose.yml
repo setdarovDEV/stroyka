@@ -20,9 +20,9 @@ services:
     environment:
       DATABASE_URL: postgresql://stroyka:stroyka123@postgres:5432/stroyka?schema=public
       JWT_SECRET: stroyka-secret-key-change-in-production
-      PORT: 3000
+      PORT: 3001
     ports:
-      - "3000:3000"
+      - "3001:3001"
     depends_on:
       - postgres
     command: >
