@@ -28,5 +28,16 @@ services:
     command: >
       sh -c "bun run prisma:deploy && bun run start:prod"
 
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://169.58.63.34:3001
+    container_name: stroyka-frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
 volumes:
   stroyka-pgdata:
