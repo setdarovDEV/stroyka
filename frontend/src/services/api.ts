@@ -50,6 +50,43 @@ class ApiService {
     return res.json() as Promise<T>;
   }
 
+  async download(path: string) {
+    const headers: Record<string, string> = {};
+    const token = this.getToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(buildApiUrl(path), { headers });
+    if (!res.ok) {
+      const message = await res.text();
+      throw new Error(message);
+    }
+
+    const blob = await res.blob();
+    const disposition = res.headers.get('content-disposition') ?? '';
+    const fileNameMatch = disposition.match(/filename="([^"]+)"/i);
+    return {
+      blob,
+      fileName: fileNameMatch?.[1] ?? 'download.bin',
+    };
+  }
+
+  async postForm<T>(path: string, formData: FormData) {
+    const headers: Record<string, string> = {};
+    const token = this.getToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(buildApiUrl(path), {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    if (!res.ok) {
+      const message = await res.text();
+      throw new Error(message);
+    }
+    return res.json() as Promise<T>;
+  }
+
   get<T>(path: string) { return this.request<T>(path); }
   post<T>(path: string, body: unknown) { return this.request<T>(path, { method: 'POST', body: JSON.stringify(body) }); }
   put<T>(path: string, body: unknown) { return this.request<T>(path, { method: 'PUT', body: JSON.stringify(body) }); }

@@ -12,15 +12,6 @@ import { Upload } from 'lucide-react';
 import { errorMessage } from '@/services/api';
 import type { EstimateLine, Paginated } from '@/api/types';
 
-type ExcelCell = string | number | boolean | null | undefined;
-type ExcelRow = ExcelCell[];
-type XlsxModule = {
-  default: {
-    read: (buffer: ArrayBuffer, options: { type: 'array' }) => { Sheets: Record<string, unknown>; SheetNames: string[] };
-    utils: { sheet_to_json: (sheet: unknown, options: { header: 1 }) => ExcelRow[] };
-  };
-};
-
 export function EstimatePage() {
   const { currentProject, user, t } = useApp();
   const [loading, setLoading] = useState(true);
@@ -69,37 +60,14 @@ export function EstimatePage() {
     if (!excelFile || !estName || !projectId) return;
     setImportResult(t('Processing...'));
     try {
-      const buffer = await excelFile.arrayBuffer();
-      const xlsxModuleUrl = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs';
-      const XLSX = (await import(/* @vite-ignore */ xlsxModuleUrl)) as XlsxModule;
-      const wb = XLSX.default.read(buffer, { type: 'array' });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const data = XLSX.default.utils.sheet_to_json(sheet, { header: 1 });
-
-      if (data.length < 2) { setImportResult(t('Empty or invalid Excel file')); return; }
-
-      const headers = data[0].map((h) => String(h).toLowerCase().trim());
-      const codeIdx = headers.findIndex((h: string) => h.includes('code') || h.includes('kod'));
-      const nameIdx = headers.findIndex((h: string) => h.includes('name') || h.includes('nom') || h.includes('nomi'));
-      const qtyIdx = headers.findIndex((h: string) => h.includes('qty') || h.includes('quantity') || h.includes('miqdor'));
-      const unitIdx = headers.findIndex((h: string) => h.includes('unit') || h.includes('birlik'));
-      const priceIdx = headers.findIndex((h: string) => h.includes('price') || h.includes('narx') || h.includes('sum'));
-
-      if (nameIdx === -1) { setImportResult(t('Could not find name column in Excel')); return; }
-
-      const categoryIdx = headers.findIndex((h: string) => h.includes('category') || h.includes('kategoriya'));
-      const importedLines = data.slice(1).filter((row) => row.some(cell => cell != null && cell !== '')).map((row, i) => ({
-        code: codeIdx >= 0 ? String(row[codeIdx] || `E2E-${i + 1}`) : `E2E-${i + 1}`,
-        name: String(row[nameIdx] || `Item ${i + 1}`),
-        plannedQuantity: qtyIdx >= 0 ? Number(row[qtyIdx]) || 0 : 1,
-        plannedUnitPrice: priceIdx >= 0 ? Number(row[priceIdx]) || undefined : undefined,
-        category: String(categoryIdx >= 0 ? row[categoryIdx] || 'Imported' : 'Imported'),
-      }));
-
-      await api.post('/estimates/import', { projectId, name: estName, lines: importedLines });
+      const formData = new FormData();
+      formData.set('projectId', projectId);
+      formData.set('name', estName);
+      formData.set('file', excelFile);
+      const result = await api.postForm<{ summary?: { workRowsCount?: number; resourceRowsCount?: number } }>('/estimates/import-workbook', formData);
       setEstName('');
       setExcelFile(null);
-      setImportResult(`${t('Imported')} ${importedLines.length} ${t('lines')}`);
+      setImportResult(`${t('Imported')} ${result.summary?.workRowsCount ?? 0} ${t('work rows')}, ${result.summary?.resourceRowsCount ?? 0} ${t('resource rows')}`);
       loadLines();
     } catch (e: unknown) { setImportResult(`${t('Excel import failed')}: ${errorMessage(e, t('Unknown error'))}`); }
   }
@@ -186,11 +154,11 @@ export function EstimatePage() {
               <Input value={estName} onChange={(e) => setEstName(e.target.value)} placeholder={t('Estimate Name *')} />
               <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
                 <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground mb-3">{t('Upload Excel file (.xlsx, .xls')}</p>
+                <p className="text-sm text-muted-foreground mb-3">{t('Upload Excel file (.xlsx, .xls)')}</p>
                 <Input type="file" accept=".xlsx,.xls" onChange={(e) => setExcelFile(e.target.files?.[0] || null)} />
                 {excelFile && <p className="text-xs text-muted-foreground mt-2">{t('Selected')}: {excelFile.name}</p>}
                 <Button variant="secondary" className="mt-3" onClick={handleImportExcel} disabled={!excelFile || !estName}>
-                  Upload Excel
+                  {t('Import Excel File')}
                 </Button>
               </div>
               <div className="relative my-4">

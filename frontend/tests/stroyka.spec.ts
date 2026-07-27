@@ -250,7 +250,7 @@ test.describe('whole frontend workflow coverage', () => {
   test('ADMIN can navigate every route, refresh pages, and use browser history', async ({ page, request }) => {
     await openAppAs(page, request);
     const routes = [
-      ['/app/dashboard', 'Dashboard'],
+      ['/app/dashboard', 'Project Cost Plan'],
       ['/app/projects', 'Projects'],
       ['/app/estimate', 'Estimate'],
       ['/app/warehouse', 'Warehouse'],

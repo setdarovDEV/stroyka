@@ -34,6 +34,14 @@ enum EstimateLineItemType {
   OTHER
 }
 
+enum EstimateLineRowType {
+  SECTION
+  WORK
+  RESOURCE
+  SUBTOTAL
+  TOTAL
+}
+
 enum TransactionType {
   OPENING_BALANCE
   INCOMING
@@ -245,6 +253,7 @@ model Estimate {
   projectId   String
   name        String
   description String?
+  workbookPreviewJson String?
   importedAt  DateTime @default(now())
   createdBy   String?
   createdAt   DateTime @default(now())
@@ -266,6 +275,16 @@ model EstimateLine {
   phaseId           String?
   zoneId            String?
   unitId            String?
+  sourceSerialRaw   String?
+  sourceSheet       String?
+  sourceRowNumber   Int?
+  rowType           EstimateLineRowType @default(WORK)
+  parentLineId      String?
+  sortOrder         Int      @default(0)
+  resourceCodeRaw   String?
+  unitLabelRaw      String?
+  normCodeRaw       String?
+  formulaRaw        String?
   plannedQuantity   Float    @default(0)
   usedQuantity      Float    @default(0)
   remainingQuantity Float    @default(0)
@@ -282,6 +301,8 @@ model EstimateLine {
   phase             ConstructionPhase? @relation(fields: [phaseId], references: [id])
   zone              Zone?    @relation(fields: [zoneId], references: [id])
   unit              Unit?    @relation(fields: [unitId], references: [id])
+  parentLine        EstimateLine? @relation("EstimateLineHierarchy", fields: [parentLineId], references: [id])
+  childLines        EstimateLine[] @relation("EstimateLineHierarchy")
   createdByUser     User?    @relation("CreatedBy", fields: [createdBy], references: [id])
   warehouseTransactions WarehouseTransaction[]
   brigadeWorkLogs   BrigadeWorkLog[]

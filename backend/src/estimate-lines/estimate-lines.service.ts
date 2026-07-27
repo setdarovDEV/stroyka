@@ -73,7 +73,9 @@ export class EstimateLinesService {
         where,
         skip: (page - 1) * limit,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: estimateId
+          ? ([{ sortOrder: 'asc' }, { sourceRowNumber: 'asc' }, { createdAt: 'asc' }] as any)
+          : ({ createdAt: 'desc' } as any),
       }),
       this.prisma.estimateLine.count({ where }),
     ]);

@@ -1,8 +1,10 @@
-import { Body, Controller, Get, Param, Post, Put, Delete, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Put, Delete, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { EstimatesService } from './estimates.service';
-import { CreateEstimateDto, ImportEstimateDto } from './dto/estimate.dto';
+import { CreateEstimateDto, ImportEstimateDto, ImportEstimateWorkbookDto } from './dto/estimate.dto';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthUser } from '../common/tenant-access.service';
+import type { Response } from 'express';
 
 @Controller('estimates')
 export class EstimatesController {
@@ -16,6 +18,25 @@ export class EstimatesController {
   @Post('import')
   import(@Body() dto: ImportEstimateDto, @CurrentUser() user: AuthUser) {
     return this.estimatesService.importEstimate(dto, user);
+  }
+
+  @Post('import-workbook')
+  @UseInterceptors(FileInterceptor('file'))
+  importWorkbook(
+    @UploadedFile() file: { buffer?: Buffer } | undefined,
+    @Body() dto: ImportEstimateWorkbookDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    if (!file?.buffer?.length) throw new BadRequestException('Workbook file is required');
+    return this.estimatesService.importWorkbook(dto, file.buffer, user);
+  }
+
+  @Get('template')
+  async template(@CurrentUser() user: AuthUser, @Res() res: Response) {
+    const file = await this.estimatesService.createImportTemplate();
+    res.setHeader('Content-Disposition', 'attachment; filename="smeta-template.xlsx"');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(Buffer.from(file));
   }
 
   @Get()

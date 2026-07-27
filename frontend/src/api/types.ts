@@ -139,13 +139,98 @@ export type MachineLog = {
 
 export type EstimateLine = {
   id: string;
+  estimateId?: string;
   code: string;
   name: string;
   category?: string | null;
+  sourceSerialRaw?: string | null;
+  sourceSheet?: string | null;
+  sourceRowNumber?: number | null;
+  rowType?: 'SECTION' | 'WORK' | 'RESOURCE' | 'SUBTOTAL' | 'TOTAL' | null;
+  parentLineId?: string | null;
+  sortOrder?: number | null;
+  resourceCodeRaw?: string | null;
+  unitLabelRaw?: string | null;
+  normCodeRaw?: string | null;
+  formulaRaw?: string | null;
   plannedQuantity: number;
   usedQuantity?: number | null;
   plannedUnitPrice?: number | null;
   plannedTotalPrice?: number | null;
+  notes?: string | null;
+  itemType?: string | null;
+  createdAt?: string;
+};
+
+export type WorkbookPreviewCellStyle = {
+  bold?: boolean;
+  italic?: boolean;
+  fontSize?: number;
+  color?: string | null;
+  backgroundColor?: string | null;
+  horizontalAlign?: string | null;
+  verticalAlign?: string | null;
+  wrapText?: boolean;
+  borderTop?: boolean;
+  borderRight?: boolean;
+  borderBottom?: boolean;
+  borderLeft?: boolean;
+};
+
+export type WorkbookPreviewCell = {
+  column: number;
+  value: string;
+  colSpan: number;
+  rowSpan: number;
+  style?: WorkbookPreviewCellStyle;
+};
+
+export type WorkbookPreviewRow = {
+  rowNumber: number;
+  height: number | null;
+  cells: WorkbookPreviewCell[];
+};
+
+export type WorkbookPreviewColumn = {
+  column: number;
+  label: string;
+  width: number | null;
+};
+
+export type WorkbookPreview = {
+  sheetName: string;
+  startColumn: number;
+  endColumn: number;
+  columns: WorkbookPreviewColumn[];
+  rows: WorkbookPreviewRow[];
+};
+
+export type Estimate = {
+  id: string;
+  projectId: string;
+  name: string;
+  description?: string | null;
+  workbookPreview?: WorkbookPreview | null;
+  importedAt?: string;
+  createdAt: string;
+  _count?: {
+    lines?: number;
+  };
+};
+
+export type EstimateImportSummary = {
+  sectionsCount: number;
+  workRowsCount: number;
+  resourceRowsCount: number;
+  subtotalRowsCount: number;
+  totalRowsCount: number;
+  warningsCount: number;
+  warnings: string[];
+};
+
+export type EstimateWorkbookImportResult = {
+  estimate: Estimate;
+  summary: EstimateImportSummary;
 };
 
 export type Alert = {

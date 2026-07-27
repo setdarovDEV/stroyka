@@ -69,3 +69,15 @@ export class ImportEstimateDto {
   @Type(() => EstimateLineItemDto)
   lines: EstimateLineItemDto[];
 }
+
+export class ImportEstimateWorkbookDto {
+  @IsString()
+  projectId: string;
+
+  @IsString()
+  name: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+}

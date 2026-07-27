@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { setupE2E, teardownE2E, type TestContext } from './setup';
+import * as path from 'path';
+import * as fs from 'fs';
+import * as ExcelJS from 'exceljs';
 
 let ctx: TestContext;
 
@@ -8,6 +11,52 @@ afterAll(async () => { await teardownE2E(); });
 
 describe('Estimates E2E', () => {
   let estimateId: string;
+
+  it('downloads the cost plan import template', async () => {
+    const res = await ctx.request()
+      .get('/estimates/template')
+      .set('Authorization', `Bearer ${ctx.admin.token}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    expect(res.headers['content-disposition']).toContain('smeta-template.xlsx');
+  });
+
+  it('imports real smeta workbook with hierarchy summary', async () => {
+    const workbookPath = path.resolve(process.cwd(), 'backend', 'templates', 'smeta-template.xlsx');
+    const res = await ctx.request()
+      .post('/estimates/import-workbook')
+      .set('Authorization', `Bearer ${ctx.admin.token}`)
+      .field('projectId', ctx.projectId)
+      .field('name', 'Workbook Import')
+      .attach('file', fs.readFileSync(workbookPath), 'smeta-template.xlsx');
+
+    expect(res.status).toBe(201);
+    expect(res.body.estimate?.name).toBe('Workbook Import');
+    expect(res.body.summary?.sectionsCount).toBeGreaterThan(0);
+    expect(res.body.summary?.workRowsCount).toBeGreaterThan(0);
+    expect(res.body.summary?.resourceRowsCount).toBeGreaterThan(0);
+
+    const lines = await ctx.request()
+      .get(`/estimate-lines?projectId=${ctx.projectId}&estimateId=${res.body.estimate.id}&page=1&limit=20`)
+      .set('Authorization', `Bearer ${ctx.admin.token}`);
+    expect(lines.status).toBe(200);
+    expect(lines.body.items[0]?.rowType).toBe('SECTION');
+  });
+
+  it('rejects workbook without _ЛРВ sheet', async () => {
+    const workbook = new ExcelJS.Workbook();
+    workbook.addWorksheet('Sheet1').addRow(['bad']);
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    const res = await ctx.request()
+      .post('/estimates/import-workbook')
+      .set('Authorization', `Bearer ${ctx.admin.token}`)
+      .field('projectId', ctx.projectId)
+      .field('name', 'Broken Workbook')
+      .attach('file', buffer, 'broken.xlsx');
+
+    expect(res.status).toBe(400);
+    expect(String(res.text)).toContain('_ЛРВ');
+  });
 
   it('creates an estimate with lines via import', async () => {
     const res = await ctx.request()
@@ -33,7 +82,7 @@ describe('Estimates E2E', () => {
       .get(`/estimates?projectId=${ctx.projectId}&page=1&limit=10`)
       .set('Authorization', `Bearer ${ctx.admin.token}`);
     expect(res.status).toBe(200);
-    expect(res.body.items.length).toBe(1);
+    expect(res.body.items.length).toBeGreaterThanOrEqual(2);
   });
 
   it('gets a single estimate with its lines', async () => {

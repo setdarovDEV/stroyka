@@ -1,475 +1,536 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import type { ECharts, EChartsOption } from 'echarts';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Download, FileSpreadsheet, Upload } from 'lucide-react';
 import { useApp } from '@/app/context';
-import { api } from '@/services/api';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { api, errorMessage } from '@/services/api';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
-import type { DashboardSummary, Paginated, Zone } from '@/api/types';
+import type { Estimate, EstimateImportSummary, EstimateLine, EstimateWorkbookImportResult, Paginated, WorkbookPreviewCell } from '@/api/types';
 
-type ThreeMesh = import('three').Mesh<import('three').BufferGeometry, import('three').Material | import('three').Material[]>;
+function formatDate(value?: string) {
+  if (!value) return '-';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
+}
 
-function MetricCard({ label, value, variant = 'default' }: { label: string; value: string | number; variant?: string }) {
-  const colorMap: Record<string, string> = {
-    default: 'text-foreground',
-    success: 'text-green-400',
-    warning: 'text-amber-400',
-    danger: 'text-red-400',
-    info: 'text-blue-400',
-  };
+function formatNumber(value?: number | null) {
+  return (value ?? 0).toLocaleString();
+}
+
+function formatCurrency(value?: number | null) {
+  return (value ?? 0).toLocaleString();
+}
+
+function MetricCard({ label, value }: { label: string; value: string | number }) {
   return (
     <Card>
       <CardContent className="p-4">
-        <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{label}</p>
-        <p className={cn('text-2xl font-bold', colorMap[variant] || colorMap.default)}>{value}</p>
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+        <p className="mt-2 text-2xl font-semibold">{value}</p>
       </CardContent>
     </Card>
   );
 }
 
-function noDataGraphic(show: boolean): EChartsOption['graphic'] {
-  if (!show) return undefined;
-  return {
-    type: 'text',
-    left: 'center',
-    top: 'middle',
-    style: {
-      text: 'No data',
-      fill: '#64748b',
-      fontSize: 13,
-      fontWeight: 600,
-    },
-  };
-}
-
-function dashboardLog(event: string, payload?: Record<string, unknown>) {
-  console.info('[dashboard:charts]', event, payload ?? {});
-}
-
-function dashboardError(event: string, error: unknown, payload?: Record<string, unknown>) {
-  console.error('[dashboard:charts]', event, { error, ...payload });
-}
-
-function isProjectNotFound(error: unknown) {
-  return error instanceof Error && error.message.includes('Project not found');
-}
-
 export function DashboardPage() {
-  const { currentProject, setCurrentProject, user, t } = useApp();
+  const { currentProject, t, user, language } = useApp();
   const [loading, setLoading] = useState(true);
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
-
-  const chartMaterialsRef = useRef<HTMLDivElement>(null);
-  const chartProgressRef = useRef<HTMLDivElement>(null);
-  const chartHoursRef = useRef<HTMLDivElement>(null);
-  const chartCostRef = useRef<HTMLDivElement>(null);
-  const threeContainerRef = useRef<HTMLDivElement>(null);
-  const chartsRef = useRef<ECharts[]>([]);
-  const chartResizeObserverRef = useRef<ResizeObserver | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+  const [documents, setDocuments] = useState<Estimate[]>([]);
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string>('');
+  const [selectedDocumentDetail, setSelectedDocumentDetail] = useState<Estimate | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [lines, setLines] = useState<EstimateLine[]>([]);
+  const [search, setSearch] = useState('');
+  const [documentName, setDocumentName] = useState('');
+  const [excelFile, setExcelFile] = useState<File | null>(null);
+  const [statusMessage, setStatusMessage] = useState('');
+  const [lastImportSummary, setLastImportSummary] = useState<EstimateImportSummary | null>(null);
+  const [previewMode, setPreviewMode] = useState<'exact' | 'structured'>('exact');
 
   const isAdmin = user?.role === 'ADMIN';
   const projectId = currentProject?.id;
+  const selectedDocument = documents.find((item) => item.id === selectedDocumentId) ?? null;
+  const exactPreview = selectedDocumentDetail?.workbookPreview ?? null;
 
-  const loadData = useCallback(async () => {
-    if (!projectId) { setLoading(false); return; }
+  const loadDocuments = useCallback(async () => {
+    if (!projectId) {
+      setDocuments([]);
+      setSelectedDocumentId('');
+      setLines([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      const res = await api.get<DashboardSummary>(`/dashboard/summary?projectId=${projectId}`);
-      setSummary(res);
-      dashboardLog('summary loaded', {
-        projectId,
-        materialRows: res.materialChartData?.length ?? 0,
-        phaseRows: res.progressByPhase?.length ?? 0,
-        workerHoursTotal: res.workerHoursTotal ?? null,
-        machineHoursTotal: res.machineHoursTotal ?? null,
-        totalPlannedCost: res.totalPlannedCost ?? null,
+      const res = await api.get<Paginated<Estimate>>(`/estimates?projectId=${projectId}&page=1&limit=100`);
+      const items = res.items ?? [];
+      setDocuments(items);
+      setSelectedDocumentId((current) => {
+        if (current && items.some((item) => item.id === current)) return current;
+        return items[0]?.id ?? '';
       });
     } catch (error) {
-      dashboardError('summary failed', error, { projectId });
-      if (isProjectNotFound(error)) {
-        setSummary(null);
-        setCurrentProject(null);
-        dashboardLog('stale project cleared', { projectId });
-      }
+      setStatusMessage(errorMessage(error, t('Failed to load cost plan documents')));
+      setDocuments([]);
+      setSelectedDocumentId('');
+      setLines([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  }, [projectId, setCurrentProject]);
+  }, [projectId, t]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  useEffect(() => {
-    if (loading || !summary) return;
-
-    let disposed = false;
-    const raf = requestAnimationFrame(() => {
-      void initCharts(summary).then((charts) => {
-        if (disposed) {
-          charts.forEach((chart) => chart.dispose());
-          chartResizeObserverRef.current?.disconnect();
-          chartResizeObserverRef.current = null;
-          dashboardLog('init disposed before commit', { chartCount: charts.length });
-          return;
-        }
-        chartsRef.current = charts;
-        dashboardLog('init committed', { chartCount: charts.length });
-      }).catch((error) => {
-        dashboardError('init failed', error);
-      });
-    });
-
-    return () => {
-      disposed = true;
-      cancelAnimationFrame(raf);
-      chartsRef.current.forEach((chart) => chart.dispose());
-      chartsRef.current = [];
-      chartResizeObserverRef.current?.disconnect();
-      chartResizeObserverRef.current = null;
-      dashboardLog('cleanup complete');
-    };
-  }, [loading, summary]);
-
-  useEffect(() => {
-    if (loading || !summary) return;
-    const timer = setTimeout(() => void init3D(), 100);
-    return () => clearTimeout(timer);
-  }, [loading, summary]);
-
-  async function initCharts(s: DashboardSummary) {
-    const containers = [
-      chartMaterialsRef.current,
-      chartProgressRef.current,
-      chartHoursRef.current,
-      isAdmin && s.totalPlannedCost != null ? chartCostRef.current : null,
-    ].filter((container): container is HTMLDivElement => Boolean(container));
-
-    if (!chartMaterialsRef.current || !chartProgressRef.current || !containers.length) return [];
-
-    const materialData = s.materialChartData ?? [];
-    const progressData = s.progressByPhase ?? [];
-    const hasMaterialData = materialData.some((d) => d.used > 0) || (s.totalEstimateQuantity || 0) > 0;
-    const materialCategories = materialData.length ? materialData.map((d) => d.name) : [t('Material')];
-    const usedMaterialValues = materialData.length ? materialData.map((d) => d.used) : [0];
-    const plannedMaterialValues = materialData.length
-      ? materialData.map(() => s.totalEstimateQuantity || 0)
-      : [s.totalEstimateQuantity || 0];
-    const hasProgressData = progressData.some((p) => p.avgUsedQuantity > 0);
-    const hasHoursData = (s.workerHoursTotal || 0) > 0 || (s.machineHoursTotal || 0) > 0;
-    const hasCostData = (s.totalPlannedCost || 0) > 0;
-
-    dashboardLog('init start', {
-      containers: containers.map((container) => ({
-        width: container.clientWidth,
-        height: container.clientHeight,
-        children: container.childElementCount,
-      })),
-      hasMaterialData,
-      hasProgressData,
-      hasHoursData,
-      hasCostData,
-      isAdmin,
-    });
-
-    chartResizeObserverRef.current?.disconnect();
-    const resizeObserver = new ResizeObserver(() => {
-      chartsRef.current.forEach((chart) => chart.resize());
-    });
-    chartResizeObserverRef.current = resizeObserver;
-    containers.forEach((container) => resizeObserver.observe(container));
-
-    const charts: ECharts[] = [];
-
-    const mChart = await loadChart(chartMaterialsRef.current, {
-      tooltip: { trigger: 'axis' },
-      graphic: noDataGraphic(!hasMaterialData),
-      legend: { textStyle: { color: '#94a3b8' }, top: 0 },
-      grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-      xAxis: { type: 'category', data: materialCategories, axisLabel: { color: '#94a3b8' }, axisLine: { lineStyle: { color: '#334155' } } },
-      yAxis: { type: 'value', min: 0, max: hasMaterialData ? undefined : 1, axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#1e293b' } } },
-      series: [
-        { name: t('Used'), type: 'bar', data: usedMaterialValues, itemStyle: { color: '#3b82f6', borderRadius: [4, 4, 0, 0] } },
-        { name: t('Planned Qty'), type: 'bar', data: plannedMaterialValues, itemStyle: { color: '#64748b', borderRadius: [4, 4, 0, 0] } },
-      ],
-    });
-    charts.push(mChart);
-
-    const phaseData = progressData.map((p) => ({ value: p.avgUsedQuantity || 1, name: p.phaseName || t('Unknown') }));
-    const pChart = await loadChart(chartProgressRef.current, {
-      tooltip: { trigger: 'item' },
-      graphic: noDataGraphic(!hasProgressData),
-      legend: { orient: 'vertical', right: 10, top: 'center', textStyle: { color: '#94a3b8' } },
-      series: [{
-        type: 'pie', radius: ['45%', '70%'], center: ['35%', '50%'],
-        data: phaseData.length ? phaseData : [{ value: 1, name: t('No phases'), itemStyle: { color: '#334155' } }],
-        label: { show: false },
-      }],
-    });
-    charts.push(pChart);
-
-    if (chartHoursRef.current) {
-      const hoursChart = await loadChart(chartHoursRef.current, {
-        tooltip: { trigger: 'axis' },
-        graphic: noDataGraphic(!hasHoursData),
-        legend: { textStyle: { color: '#94a3b8' }, top: 0 },
-        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-        xAxis: { type: 'category', data: [t('Worker Hours'), t('Machine Hours')], axisLabel: { color: '#94a3b8' } },
-        yAxis: { type: 'value', min: 0, max: hasHoursData ? undefined : 1, axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#1e293b' } } },
-        series: [
-          { name: t('Actual'), type: 'bar', data: [s.workerHoursTotal || 0, s.machineHoursTotal || 0], itemStyle: { color: '#22c55e', borderRadius: [4, 4, 0, 0] } },
-        ],
-      });
-      charts.push(hoursChart);
+  const loadSelectedDocumentDetail = useCallback(async () => {
+    if (!selectedDocumentId) {
+      setSelectedDocumentDetail(null);
+      setLoadingPreview(false);
+      return;
     }
 
-    if (chartCostRef.current && isAdmin && s.totalPlannedCost != null) {
-      const costChart = await loadChart(chartCostRef.current, {
-        tooltip: { trigger: 'item' },
-        graphic: noDataGraphic(!hasCostData),
-        legend: { orient: 'vertical', right: 10, top: 'center', textStyle: { color: '#94a3b8' } },
-        series: [{
-          type: 'gauge', center: ['50%', '55%'], radius: '85%',
-          min: 0, max: Math.max(s.totalPlannedCost || 100, 100),
-          startAngle: 210, endAngle: -30,
-          data: [{ value: s.totalPlannedCost || 0, name: t('Planned Cost (UZS)') }],
-          detail: { valueAnimation: true, fontSize: 14, color: '#94a3b8', formatter: '{value} UZS' },
-          axisLine: { lineStyle: { width: 12, color: [[0.3, '#22c55e'], [0.7, '#3b82f6'], [1, '#ef4444']] } },
-        }],
-      });
-      charts.push(costChart);
+    setLoadingPreview(true);
+    try {
+      const estimate = await api.get<Estimate>(`/estimates/${selectedDocumentId}`);
+      setSelectedDocumentDetail(estimate);
+    } catch (error) {
+      setStatusMessage(errorMessage(error, t('Failed to load cost plan preview')));
+      setSelectedDocumentDetail(null);
+    } finally {
+      setLoadingPreview(false);
     }
+  }, [selectedDocumentId, t]);
 
-    charts.forEach((chart) => chart.resize());
-    dashboardLog('init complete', {
-      chartCount: charts.length,
-      canvases: containers.map((container) => container.querySelectorAll('canvas').length),
-      svgs: containers.map((container) => container.querySelectorAll('svg').length),
-      html: containers.map((container) => container.innerHTML.length),
-    });
-    return charts;
-  }
-
-  async function loadChart(container: HTMLDivElement, option: EChartsOption) {
-    const echarts = await import('echarts');
-    echarts.getInstanceByDom(container)?.dispose();
-    const chart = echarts.init(container, 'dark');
-    chart.setOption({ backgroundColor: 'transparent', ...option });
-    dashboardLog('chart loaded', {
-      width: container.clientWidth,
-      height: container.clientHeight,
-      canvasCount: container.querySelectorAll('canvas').length,
-      svgCount: container.querySelectorAll('svg').length,
-      childCount: container.childElementCount,
-    });
-    return chart;
-  }
-
-  async function init3D() {
-    const container = threeContainerRef.current;
-    if (!container || container.hasChildNodes() || !summary) return;
-
-    const THREE = await import('three');
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0f172a);
-
-    const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
-    camera.position.set(8, 6, 8);
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    container.appendChild(renderer.domElement);
-
-    scene.add(new THREE.AmbientLight(0x404060, 1.5));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 2);
-    dirLight.position.set(5, 10, 7);
-    scene.add(dirLight);
-
-    const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
-    const meshes: { mesh: ThreeMesh; originalColor: number }[] = [];
-    const statusColors: Record<string, number> = {
-      NOT_STARTED: 0x64748b, IN_PROGRESS: 0x3b82f6,
-      COMPLETED: 0x22c55e, DELAYED: 0xf59e0b, OVER_BUDGET: 0xef4444,
-    };
+  const loadLines = useCallback(async () => {
+    if (!projectId || !selectedDocumentId) {
+      setLines([]);
+      return;
+    }
 
     try {
-      const zonesRes = await api.get<Paginated<Zone>>(`/zones?projectId=${projectId}`);
-      const zones = zonesRes.items || [];
+      const pageSize = 500;
+      const firstPage = await api.get<Paginated<EstimateLine>>(
+        `/estimate-lines?projectId=${projectId}&estimateId=${selectedDocumentId}&page=1&limit=${pageSize}`,
+      );
 
-      if (zones.length > 0) {
-        const gridSize = Math.ceil(Math.sqrt(zones.length));
-        zones.forEach((zone, i) => {
-          const progress = zone.progressPercent ?? 0;
-          const geo = new THREE.BoxGeometry(1.5, (progress / 100) * 2 || 0.5, 1.5);
-          const color = statusColors[zone.status] || 0x64748b;
-          const mat = new THREE.MeshPhongMaterial({ color, transparent: true, opacity: 0.9 });
-          const mesh = new THREE.Mesh(geo, mat);
-          mesh.position.set(
-            (i % gridSize) * 2 - gridSize + 1,
-            (progress / 100) || 0.3,
-            Math.floor(i / gridSize) * 2 - gridSize / 2
-          );
-          mesh.userData = zone;
-          scene.add(mesh);
-          meshes.push({ mesh, originalColor: color });
-        });
-      } else {
-        for (let i = 0; i < 6; i++) {
-          const geo = new THREE.BoxGeometry(1.5, 0.5 + Math.random() * 1.5, 1.5);
-          const mat = new THREE.MeshPhongMaterial({ color: 0x334155, transparent: true, opacity: 0.3 });
-          const mesh = new THREE.Mesh(geo, mat);
-          mesh.position.set((i % 3) * 2 - 2, 0.5, Math.floor(i / 3) * 2 - 1);
-          scene.add(mesh);
-        }
+      const firstItems = firstPage.items ?? [];
+      const totalPages = firstPage.pages ?? 1;
+      if (totalPages <= 1) {
+        setLines(firstItems);
+        return;
       }
 
-      const tooltip = document.createElement('div');
-      tooltip.style.cssText = 'position:absolute;background:rgba(15,23,42,0.95);color:#e2e8f0;padding:8px 12px;border-radius:6px;font-size:12px;pointer-events:none;display:none;border:1px solid #334155;z-index:10;white-space:nowrap';
-      container.appendChild(tooltip);
+      const pageRequests: Array<Promise<Paginated<EstimateLine>>> = [];
+      for (let page = 2; page <= totalPages; page += 1) {
+        pageRequests.push(
+          api.get<Paginated<EstimateLine>>(
+            `/estimate-lines?projectId=${projectId}&estimateId=${selectedDocumentId}&page=${page}&limit=${pageSize}`,
+          ),
+        );
+      }
 
-      container.addEventListener('mousemove', (e) => {
-        const rect = container.getBoundingClientRect();
-        mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-        mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-
-        raycaster.setFromCamera(mouse, camera);
-        const intersects = raycaster.intersectObjects(meshes.map(m => m.mesh));
-        if (intersects.length > 0) {
-          const zone = intersects[0].object.userData;
-          if (zone?.name) {
-            tooltip.style.display = 'block';
-            tooltip.style.left = `${e.clientX - rect.left + 10}px`;
-            tooltip.style.top = `${e.clientY - rect.top - 20}px`;
-            tooltip.innerHTML = `<strong>${zone.name}</strong><br/>${t('Floor')}: ${zone.floor || '-'} | ${t('Progress')}: ${zone.progressPercent}%<br/>${t('Status')}: ${zone.status}`;
-          }
-        } else {
-          tooltip.style.display = 'none';
-        }
-      });
-
-      container.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
-    } catch { /* zones fetch failed, keep base 3D */ }
-
-    let angle = 0;
-    let animId: number;
-    function animate() {
-      animId = requestAnimationFrame(animate);
-      angle += 0.003;
-      camera.position.x = Math.cos(angle) * 10;
-      camera.position.z = Math.sin(angle) * 10;
-      camera.lookAt(0, 0.5, 0);
-      renderer.render(scene, camera);
+      const remainingPages = await Promise.all(pageRequests);
+      setLines([
+        ...firstItems,
+        ...remainingPages.flatMap((page) => page.items ?? []),
+      ]);
+    } catch (error) {
+      setStatusMessage(errorMessage(error, t('Failed to load cost plan lines')));
+      setLines([]);
     }
-    animate();
+  }, [projectId, selectedDocumentId, t]);
 
-    container.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      camera.position.multiplyScalar(e.deltaY > 0 ? 1.05 : 0.95);
-    }, { passive: false });
+  useEffect(() => {
+    void loadDocuments();
+  }, [loadDocuments]);
 
-    return () => cancelAnimationFrame(animId);
+  useEffect(() => {
+    void loadLines();
+  }, [loadLines]);
+
+  useEffect(() => {
+    void loadSelectedDocumentDetail();
+  }, [loadSelectedDocumentDetail]);
+
+  const filteredLines = useMemo(() => {
+    const normalized = search.trim().toLowerCase();
+    if (!normalized) return lines;
+    return lines.filter((line) =>
+      [line.code, line.name, line.category, line.notes]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(normalized)),
+    );
+  }, [lines, search]);
+
+  const totals = useMemo(() => {
+    const sectionCount = lines.filter((line) => line.rowType === 'SECTION').length;
+    const workCount = lines.filter((line) => line.rowType === 'WORK').length;
+    const resourceCount = lines.filter((line) => line.rowType === 'RESOURCE').length;
+    const totalValue = lines.reduce((sum, line) => sum + (line.plannedTotalPrice ?? 0), 0);
+    return {
+      lineCount: workCount,
+      sectionCount,
+      resourceCount,
+      totalValue,
+    };
+  }, [lines]);
+
+  async function downloadTemplate() {
+    setDownloadingTemplate(true);
+    setStatusMessage('');
+    try {
+      const { blob, fileName } = await api.download('/estimates/template');
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(url);
+      setStatusMessage(t('Template downloaded successfully'));
+    } catch (error) {
+      setStatusMessage(errorMessage(error, t('Template download failed')));
+    } finally {
+      setDownloadingTemplate(false);
+    }
   }
 
-  if (loading && !summary) {
+  async function importExcel() {
+    if (!projectId || !documentName || !excelFile) return;
+
+    setImporting(true);
+    setStatusMessage(t('Processing...'));
+    try {
+      const formData = new FormData();
+      formData.set('projectId', projectId);
+      formData.set('name', documentName);
+      formData.set('file', excelFile);
+      const created = await api.postForm<EstimateWorkbookImportResult>('/estimates/import-workbook', formData);
+
+      setDocumentName('');
+      setExcelFile(null);
+      setLastImportSummary(created.summary);
+      setSelectedDocumentDetail(created.estimate);
+      setLoadingPreview(false);
+      setStatusMessage(
+        `${t('Imported')}: ${created.summary.sectionsCount} ${t('sections')}, ${created.summary.workRowsCount} ${t('work rows')}, ${created.summary.resourceRowsCount} ${t('resource rows')}, ${created.summary.warningsCount} ${t('warnings')}`,
+      );
+      await loadDocuments();
+      setSelectedDocumentId(created.estimate.id);
+    } catch (error) {
+      setStatusMessage(`${t('Excel import failed')}: ${errorMessage(error, t('Unknown error'))}`);
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  if (loading && !documents.length) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="space-y-4 text-center">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-muted-foreground">{t('Loading dashboard...')}</p>
-        </div>
+      <div className="flex h-64 items-center justify-center">
+        <p className="text-sm text-muted-foreground">{t('Loading dashboard...')}</p>
       </div>
     );
   }
 
-  if (!projectId) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center space-y-2">
-          <p className="text-lg text-muted-foreground">{t('No project selected')}</p>
-          <p className="text-sm text-muted-foreground">{t('Go to Projects to select or create one')}</p>
-        </div>
-      </div>
-    );
+  function argbToCss(value?: string | null) {
+    if (!value || value.length !== 8) return undefined;
+    return `#${value.slice(2)}`;
   }
 
-  const s = summary;
+  function previewCellStyle(cell: WorkbookPreviewCell): React.CSSProperties {
+    return {
+      backgroundColor: argbToCss(cell.style?.backgroundColor),
+      color: argbToCss(cell.style?.color) ?? '#000000',
+      fontWeight: cell.style?.bold ? 700 : 400,
+      fontStyle: cell.style?.italic ? 'italic' : 'normal',
+      fontSize: cell.style?.fontSize ? `${cell.style.fontSize}px` : undefined,
+      textAlign: (cell.style?.horizontalAlign as React.CSSProperties['textAlign']) ?? 'left',
+      verticalAlign: (cell.style?.verticalAlign as React.CSSProperties['verticalAlign']) ?? 'middle',
+      whiteSpace: cell.style?.wrapText ? 'pre-wrap' : 'pre-line',
+      borderTop: cell.style?.borderTop ? '1px solid hsl(var(--border))' : '1px solid hsl(var(--border))',
+      borderRight: cell.style?.borderRight ? '1px solid hsl(var(--border))' : '1px solid hsl(var(--border))',
+      borderBottom: cell.style?.borderBottom ? '1px solid hsl(var(--border))' : '1px solid hsl(var(--border))',
+      borderLeft: cell.style?.borderLeft ? '1px solid hsl(var(--border))' : '1px solid hsl(var(--border))',
+      padding: '0.4rem 0.5rem',
+      minWidth: '3rem',
+    };
+  }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">{t('Dashboard')}</h1>
-        <p className="text-sm text-muted-foreground mt-1">{t('Construction project overview')} - {currentProject?.name}</p>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">{t('Project Cost Plan')}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t('Upload a project cost plan file, download the template, and review imported line items')} - {currentProject?.name}
+          </p>
+        </div>
+        <Button variant="outline" onClick={downloadTemplate} disabled={downloadingTemplate}>
+          <Download className="mr-2 h-4 w-4" />
+          {downloadingTemplate ? t('Preparing template...') : t('Download Excel Template')}
+        </Button>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-        <MetricCard label={t('Progress')} value={`${(s?.overallProgress || 0).toFixed(1)}%`} variant="info" />
-        <MetricCard label={t('Estimate Lines')} value={s?.totalEstimateLines || 0} />
-        <MetricCard label={t('Active Brigades')} value={s?.activeBrigades || 0} variant="success" />
-        <MetricCard label={t('Warehouse Items')} value={s?.warehouseItems || 0} />
-        <MetricCard label={t('Critical Alerts')} value={s?.alerts?.criticalCount || 0} variant={s?.alerts?.criticalCount ? 'danger' : 'default'} />
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {isAdmin && <MetricCard label={t('Planned Cost')} value={`${((s?.totalPlannedCost || 0) / 1000000).toFixed(1)}M`} variant="warning" />}
-        {isAdmin && <MetricCard label={t('Warehouse Value')} value={`${((s?.totalBalance || 0) / 1000000).toFixed(1)}M`} />}
-        <MetricCard label={t('Worker Hours')} value={Math.round(s?.workerHoursTotal || 0)} />
-        <MetricCard label={t('Machine Hours')} value={Math.round(s?.machineHoursTotal || 0)} />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
         <Card>
-          <CardHeader><CardTitle className="text-sm">{t('Material Usage')}</CardTitle></CardHeader>
-          <CardContent><div ref={chartMaterialsRef} className="h-64" /></CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle className="text-sm">{t('Progress by Phase')}</CardTitle></CardHeader>
-          <CardContent><div ref={chartProgressRef} className="h-64" /></CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle className="text-sm">{t('Worker & Machine Hours')}</CardTitle></CardHeader>
-          <CardContent><div ref={chartHoursRef} className="h-64" /></CardContent>
-        </Card>
-        {isAdmin && (
-          <Card>
-            <CardHeader><CardTitle className="text-sm">{t('Planned Cost (Admin)')}</CardTitle></CardHeader>
-            <CardContent><div ref={chartCostRef} className="h-64" /></CardContent>
-          </Card>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader><CardTitle className="text-sm">{t('Recent Alerts')}</CardTitle></CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {s?.recentAlerts?.length ? (
-                s.recentAlerts.slice(0, 5).map((a) => (
-                  <div key={a.id} className={cn(
-                    'flex items-start gap-3 p-3 bg-muted/50 rounded-md border-l-2',
-                    a.severity === 'CRITICAL' ? 'border-l-red-500' : a.severity === 'WARNING' ? 'border-l-amber-500' : 'border-l-blue-500'
-                  )}>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{a.title}</p>
-                      <p className="text-xs text-muted-foreground truncate">{a.message}</p>
-                    </div>
-                    <Badge variant={a.severity === 'CRITICAL' ? 'danger' : a.severity === 'WARNING' ? 'warning' : 'info'}>{a.severity}</Badge>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground">{t('No active alerts')}</p>
+          <CardHeader>
+            <CardTitle className="text-sm">{t('Import Cost Plan')}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {!projectId && (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+                {t('Select a project before importing a cost plan')}
+              </div>
+            )}
+            <Input
+              value={documentName}
+              onChange={(event) => setDocumentName(event.target.value)}
+              placeholder={t('Document Name *')}
+              disabled={!projectId}
+            />
+            <div className="rounded-lg border-2 border-dashed border-border p-6 text-center">
+              <FileSpreadsheet className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">{t('Upload Excel file (.xlsx, .xls)')}</p>
+              <Input
+                className="mt-3"
+                type="file"
+                accept=".xlsx,.xls"
+                disabled={!projectId}
+                onChange={(event) => setExcelFile(event.target.files?.[0] || null)}
+              />
+              {excelFile && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {t('Selected')}: {excelFile.name}
+                </p>
               )}
+              <Button className="mt-4" onClick={importExcel} disabled={!projectId || !documentName || !excelFile || importing}>
+                <Upload className="mr-2 h-4 w-4" />
+                {importing ? t('Processing...') : t('Import Excel File')}
+              </Button>
             </div>
+            {statusMessage && (
+              <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+                {statusMessage}
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2">
-          <CardHeader><CardTitle className="text-sm">{t('3D Building Prototype')}</CardTitle></CardHeader>
-          <CardContent>
-            <div ref={threeContainerRef} className="h-80 bg-secondary rounded-lg relative" />
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">{t('Imported Documents')}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {documents.length ? documents.map((item) => {
+              const active = item.id === selectedDocumentId;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setSelectedDocumentId(item.id)}
+                  className={`w-full rounded-lg border p-3 text-left transition ${
+                    active ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-medium">{item.name}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {t('Imported on')}: {formatDate(item.createdAt)}
+                      </p>
+                    </div>
+                    <Badge variant={active ? 'info' : 'secondary'}>
+                      {item._count?.lines ?? 0} {t('lines')}
+                    </Badge>
+                  </div>
+                </button>
+              );
+            }) : (
+              <p className="text-sm text-muted-foreground">
+                {projectId ? t('No imported cost plan documents') : t('Select a project to view imported documents')}
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <MetricCard label={t('Lines')} value={totals.lineCount} />
+        <MetricCard label={t('Sections')} value={totals.sectionCount} />
+        <MetricCard label={t('Resources')} value={totals.resourceCount} />
+        <MetricCard
+          label={isAdmin ? t('Planned Cost') : t('Document Status')}
+          value={isAdmin ? formatCurrency(totals.totalValue) : selectedDocument ? t('Imported') : '-'}
+        />
+      </div>
+
+      {lastImportSummary && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">{t('Last Import Summary')}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2 text-sm">
+            <Badge variant="secondary">{lastImportSummary.sectionsCount} {t('sections')}</Badge>
+            <Badge variant="secondary">{lastImportSummary.workRowsCount} {t('work rows')}</Badge>
+            <Badge variant="secondary">{lastImportSummary.resourceRowsCount} {t('resource rows')}</Badge>
+            <Badge variant="secondary">{lastImportSummary.subtotalRowsCount} {t('subtotal rows')}</Badge>
+            <Badge variant="secondary">{lastImportSummary.totalRowsCount} {t('total rows')}</Badge>
+            <Badge variant={lastImportSummary.warningsCount ? 'warning' : 'success'}>
+              {lastImportSummary.warningsCount} {t('warnings')}
+            </Badge>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <CardTitle>{selectedDocument?.name ?? t('Imported Line Items')}</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {previewMode === 'exact'
+                ? t('Exact workbook preview with original Excel text and columns')
+                : selectedDocument?.description || t('Structured view of imported project cost plan rows')}
+            </p>
+          </div>
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={t('Search by code, name, section, or notes...')}
+            className="w-full lg:max-w-sm"
+          />
+        </CardHeader>
+        <CardContent>
+          <Tabs value={previewMode} onValueChange={(value) => setPreviewMode(value as 'exact' | 'structured')}>
+            <TabsList className="mb-4">
+              <TabsTrigger value="exact">{t('Exact Preview')}</TabsTrigger>
+              <TabsTrigger value="structured">{t('Structured View')}</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="exact" className="mt-0">
+              {loadingPreview ? (
+                <div className="py-10 text-center text-muted-foreground">
+                  {t('Loading workbook preview...')}
+                </div>
+              ) : exactPreview ? (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    <Badge variant="outline">{language.toUpperCase()} UI</Badge>
+                    <Badge variant="outline">{t('Workbook text kept as imported')}</Badge>
+                    <Badge variant="outline">{exactPreview?.rows.length ?? 0} {t('rows')}</Badge>
+                  </div>
+                  <div className="max-h-[720px] overflow-auto rounded-lg border border-border bg-white">
+                    <table className="min-w-max border-collapse text-sm">
+                      <colgroup>
+                        {exactPreview.columns.map((column) => (
+                          <col
+                            key={column.column}
+                            style={{ width: column.width ? `${Math.max(column.width * 8, 48)}px` : undefined }}
+                          />
+                        ))}
+                      </colgroup>
+                      <tbody>
+                        {exactPreview.rows.map((row) => (
+                          <tr key={row.rowNumber} style={{ height: row.height ? `${row.height}px` : undefined }}>
+                            {row.cells.map((cell) => (
+                              <td
+                                key={`${row.rowNumber}-${cell.column}`}
+                                colSpan={cell.colSpan}
+                                rowSpan={cell.rowSpan}
+                                style={previewCellStyle(cell)}
+                              >
+                                {cell.value || '\u00A0'}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="py-10 text-center text-muted-foreground">
+                  {selectedDocument
+                    ? t('Workbook preview is not available for this document. Re-import the workbook to generate an exact 1:1 preview.')
+                    : projectId
+                      ? t('Import a cost plan to see line items here')
+                      : t('Select a project to view imported line items')}
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="structured" className="mt-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t('Code')}</TableHead>
+                    <TableHead>{t('Name')}</TableHead>
+                    <TableHead>{t('Category')}</TableHead>
+                    <TableHead>{t('Row Type')}</TableHead>
+                    <TableHead>{t('Type')}</TableHead>
+                    <TableHead>{t('Unit')}</TableHead>
+                    <TableHead className="text-right">{t('Planned Qty')}</TableHead>
+                    {isAdmin && <TableHead className="text-right">{t('Unit Price')}</TableHead>}
+                    {isAdmin && <TableHead className="text-right">{t('Total')}</TableHead>}
+                    <TableHead>{t('Notes')}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredLines.length ? filteredLines.map((line) => (
+                    <TableRow
+                      key={line.id}
+                      className={cn(
+                        line.rowType === 'SECTION' && 'bg-muted/40 font-semibold',
+                        line.rowType === 'SUBTOTAL' && 'bg-muted/20',
+                        line.rowType === 'TOTAL' && 'bg-primary/5 font-semibold',
+                      )}
+                    >
+                      <TableCell className="font-mono text-xs">{line.code}</TableCell>
+                      <TableCell className={cn(
+                        'font-medium',
+                        line.rowType === 'WORK' && 'pl-6',
+                        line.rowType === 'RESOURCE' && 'pl-10',
+                        (line.rowType === 'SUBTOTAL' || line.rowType === 'TOTAL') && 'pl-6',
+                      )}>
+                        {line.name}
+                      </TableCell>
+                      <TableCell>{line.category || '-'}</TableCell>
+                      <TableCell>
+                        <Badge variant={
+                          line.rowType === 'SECTION' ? 'info' :
+                          line.rowType === 'WORK' ? 'secondary' :
+                          line.rowType === 'RESOURCE' ? 'outline' :
+                          line.rowType === 'SUBTOTAL' ? 'warning' : 'success'
+                        }>
+                          {line.rowType || '-'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{line.itemType || 'MATERIAL'}</TableCell>
+                      <TableCell>{line.unitLabelRaw || '-'}</TableCell>
+                      <TableCell className="text-right">{formatNumber(line.plannedQuantity)}</TableCell>
+                      {isAdmin && <TableCell className="text-right">{formatCurrency(line.plannedUnitPrice)}</TableCell>}
+                      {isAdmin && <TableCell className="text-right">{formatCurrency(line.plannedTotalPrice)}</TableCell>}
+                      <TableCell className="max-w-72 truncate text-muted-foreground">{line.notes || '-'}</TableCell>
+                    </TableRow>
+                  )) : (
+                    <TableRow>
+                      <TableCell colSpan={isAdmin ? 10 : 8} className="py-10 text-center text-muted-foreground">
+                        {selectedDocument
+                          ? t('No matching line items found')
+                          : projectId
+                            ? t('Import a cost plan to see line items here')
+                            : t('Select a project to view imported line items')}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
     </div>
   );
 }
