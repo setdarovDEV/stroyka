@@ -25,8 +25,7 @@ services:
       - "3001:3001"
     depends_on:
       - postgres
-    command: >
-      sh -c "bun run prisma:deploy && bun run start:prod"
+    command: ["bun", "run", "start:prod"]
 
   frontend:
     build:
