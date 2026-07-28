@@ -96,7 +96,6 @@ export class SmetaParserService {
     const warnings: string[] = [];
     const sheet = workbook.getWorksheet('_ЛРВ');
     if (!sheet) throw new BadRequestException('Workbook must contain _ЛРВ sheet');
-    if (!workbook.getWorksheet('_РС')) warnings.push('_РС sheet is missing');
 
     const dataStartRow = this.findDataStartRow(sheet);
     if (!dataStartRow) throw new BadRequestException('Expected _ЛРВ header band was not found');
@@ -366,7 +365,7 @@ export class SmetaParserService {
   }
 
   private buildWorkbookPreview(sheet: ExcelJS.Worksheet): WorkbookPreview {
-    const startColumn = 4;
+    const startColumn = this.findPreviewStartColumn(sheet);
     const endColumn = this.findPreviewEndColumn(sheet, startColumn);
     const mergeRanges = this.parseMergeRanges(sheet.model?.merges ?? [], startColumn, endColumn);
     const skippedCells = new Set<string>();
@@ -423,6 +422,31 @@ export class SmetaParserService {
   private findPreviewEndColumn(sheet: ExcelJS.Worksheet, startColumn: number) {
     const candidate = Math.max(sheet.columnCount, sheet.actualColumnCount ?? 0, 12);
     return Math.max(startColumn, candidate);
+  }
+
+  private findPreviewStartColumn(sheet: ExcelJS.Worksheet) {
+    let startColumn = Number.MAX_SAFE_INTEGER;
+
+    for (let rowNumber = 1; rowNumber <= sheet.rowCount; rowNumber += 1) {
+      const row = sheet.getRow(rowNumber);
+      const actualCellCount = Math.max(row.cellCount, row.actualCellCount ?? 0);
+      for (let column = 1; column <= actualCellCount; column += 1) {
+        const text = this.getDisplayText(row.getCell(column));
+        if (text) {
+          startColumn = Math.min(startColumn, column);
+          break;
+        }
+      }
+    }
+
+    if (startColumn !== Number.MAX_SAFE_INTEGER) return startColumn;
+
+    const mergeColumns = (sheet.model?.merges ?? [])
+      .map((ref) => this.parseCellRef(ref.split(':')[0]))
+      .filter((cell): cell is { column: number; row: number } => Boolean(cell))
+      .map((cell) => cell.column);
+
+    return mergeColumns.length ? Math.min(...mergeColumns) : 1;
   }
 
   private parseMergeRanges(mergeRefs: string[], startColumn: number, endColumn: number) {

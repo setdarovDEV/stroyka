@@ -35,6 +35,9 @@ describe('Estimates E2E', () => {
     expect(res.body.summary?.sectionsCount).toBeGreaterThan(0);
     expect(res.body.summary?.workRowsCount).toBeGreaterThan(0);
     expect(res.body.summary?.resourceRowsCount).toBeGreaterThan(0);
+    expect(res.body.estimate?.workbookPreview?.startColumn).toBe(1);
+    expect(res.body.estimate?.workbookPreview?.rows?.find((row: { rowNumber: number }) => row.rowNumber === 12)?.cells?.[0]?.value)
+      .toBe('КУРИЛИШ БЎЛИМЛАРИ');
 
     const lines = await ctx.request()
       .get(`/estimate-lines?projectId=${ctx.projectId}&estimateId=${res.body.estimate.id}&page=1&limit=20`)
