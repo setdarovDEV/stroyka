@@ -1,0 +1,57 @@
+name: windows-build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - agent/**
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-windows-installer:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          target: x86_64-pc-windows-msvc
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            frontend/src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build Windows installer
+        run: bunx tauri build --bundles nsis --target x86_64-pc-windows-msvc
+
+      - name: Upload NSIS bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: stroyka-windows-nsis
+          path: |
+            frontend/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            frontend/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.zip
+            frontend/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.sig
+          if-no-files-found: error
