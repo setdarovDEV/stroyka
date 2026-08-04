@@ -25,7 +25,7 @@ export function RegisterPage() {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  if (user) return <Navigate to="/app/smeta" replace />;
+  if (user) return <Navigate to="/app/dashboard" replace />;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -34,7 +34,7 @@ export function RegisterPage() {
     try {
       await register({ fullName, username, password, role, email: email || undefined, phone: phone || undefined });
       setSuccess(true);
-      window.location.href = '/app/smeta';
+      window.location.href = '/app/dashboard';
     } catch (err: unknown) {
       setError(errorMessage(err, t('Registration failed')));
     }
@@ -42,7 +42,7 @@ export function RegisterPage() {
   }
 
   if (success) {
-    return <Navigate to="/app/smeta" replace />;
+    return <Navigate to="/app/dashboard" replace />;
   }
 
   return (
@@ -57,17 +57,17 @@ export function RegisterPage() {
               STROYK<span className="text-primary">A</span>
             </h1>
             <p className="text-lg text-muted-foreground max-w-sm mx-auto leading-relaxed">
-              {t('Create your account to access smeta uploading, warehouse inventory, and M29 management.')}
+              {t('Create your account to access the construction control system. Admins manage projects, Prorabs handle site operations.')}
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3 border-t pt-6 text-left">
             <div>
               <p className="text-xs text-muted-foreground">{t('Director')}</p>
-              <p className="text-sm font-medium">{t('System access')}</p>
+              <p className="text-sm font-medium">{t('Full control')}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">{t('Prorab')}</p>
-              <p className="text-sm font-medium">{t('Daily operations')}</p>
+              <p className="text-sm font-medium">{t('Site execution')}</p>
             </div>
           </div>
         </div>

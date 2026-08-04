@@ -106,7 +106,7 @@ describe('Warehouse E2E', () => {
         materialId: ctx.materialId,
         warehouseItemId,
         type: 'OUTGOING',
-        quantity: 20,
+        quantity: -20,
         unitId: ctx.unitId,
         notes: 'Usage for zone A',
       });
@@ -114,7 +114,7 @@ describe('Warehouse E2E', () => {
     const confirm = await ctx.request()
       .post(`/warehouse-transactions/${outgoing.body.id}/confirm`)
       .set('Authorization', `Bearer ${ctx.admin.token}`)
-      .send({ confirmedQuantity: 20 });
+      .send({ confirmedQuantity: -20 });
     expect(confirm.status).toBe(201);
     const check = await ctx.request()
       .get(`/warehouse/${warehouseItemId}`)
