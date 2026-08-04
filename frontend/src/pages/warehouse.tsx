@@ -92,10 +92,7 @@ export function WarehousePage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">{t('Warehouse')}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{t('Material stock and transaction management')}</p>
-        </div>
+        <p className="text-sm text-muted-foreground">{t('Material stock and transaction management')}</p>
         <Button onClick={() => setShowTxForm(true)}>
           <Truck className="w-4 h-4 mr-2" /> {t('New Transaction')}
         </Button>

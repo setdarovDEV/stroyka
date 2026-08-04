@@ -9,10 +9,7 @@ export function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">{t('Settings')}</h1>
-        <p className="text-sm text-muted-foreground mt-1">{t('Application and profile settings')}</p>
-      </div>
+      <p className="text-sm text-muted-foreground">{t('Application and profile settings')}</p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>

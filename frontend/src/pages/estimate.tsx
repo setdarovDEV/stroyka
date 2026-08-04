@@ -1,16 +1,20 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import { AgGridReact } from 'ag-grid-react';
+import { themeQuartz } from 'ag-grid-community';
+import type { ColDef } from 'ag-grid-community';
 import { useApp } from '@/app/context';
 import { api } from '@/services/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Upload } from 'lucide-react';
+import { ArrowRight, CheckCircle2, ClipboardCheck, FileSpreadsheet, Upload, Warehouse } from 'lucide-react';
 import { errorMessage } from '@/services/api';
 import type { EstimateLine, Paginated } from '@/api/types';
+import 'ag-grid-community/styles/ag-grid.css';
+import 'ag-grid-community/styles/ag-theme-quartz.css';
 
 export function EstimatePage() {
   const { currentProject, user, t } = useApp();
@@ -22,7 +26,6 @@ export function EstimatePage() {
   const [tab, setTab] = useState('lines');
 
   const [estName, setEstName] = useState('');
-  const [estLines, setEstLines] = useState('');
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const [importResult, setImportResult] = useState<string>('');
 
@@ -44,18 +47,6 @@ export function EstimatePage() {
 
   useEffect(() => { loadLines(); }, [loadLines]);
 
-  async function handleImportJson() {
-    if (!estName || !estLines || !projectId) return;
-    try {
-      const parsedLines = JSON.parse(estLines) as unknown;
-      await api.post('/estimates/import', { projectId, name: estName, lines: parsedLines });
-      setEstName('');
-      setEstLines('');
-      setImportResult(t('Import successful'));
-      loadLines();
-    } catch { setImportResult(t('Invalid JSON or import failed')); }
-  }
-
   async function handleImportExcel() {
     if (!excelFile || !estName || !projectId) return;
     setImportResult(t('Processing...'));
@@ -76,12 +67,120 @@ export function EstimatePage() {
     !search || l.name?.toLowerCase().includes(search.toLowerCase()) || l.code?.toLowerCase().includes(search.toLowerCase())
   );
 
+  const columnDefs = useMemo<ColDef<EstimateLine>[]>(() => {
+    const columns: ColDef<EstimateLine>[] = [
+      {
+        field: 'code',
+        headerName: t('Code'),
+        minWidth: 140,
+        cellClass: 'font-mono text-xs',
+      },
+      {
+        field: 'name',
+        headerName: t('Name'),
+        minWidth: 320,
+        flex: 1.4,
+      },
+      {
+        field: 'category',
+        headerName: t('Category'),
+        minWidth: 160,
+        valueGetter: (params) => params.data?.category || '-',
+      },
+      {
+        field: 'plannedQuantity',
+        headerName: t('Planned Qty'),
+        minWidth: 140,
+        type: 'numericColumn',
+      },
+      {
+        field: 'usedQuantity',
+        headerName: t('Used Qty'),
+        minWidth: 140,
+        type: 'numericColumn',
+        valueGetter: (params) => params.data?.usedQuantity ?? 0,
+      },
+    ];
+
+    if (isAdmin) {
+      columns.push(
+        {
+          field: 'plannedUnitPrice',
+          headerName: t('Unit Price'),
+          minWidth: 140,
+          type: 'numericColumn',
+          valueFormatter: (params) => params.value?.toLocaleString?.() || '-',
+        },
+        {
+          field: 'plannedTotalPrice',
+          headerName: t('Total'),
+          minWidth: 160,
+          type: 'numericColumn',
+          valueFormatter: (params) => params.value?.toLocaleString?.() || '-',
+        },
+      );
+    }
+
+    columns.push({
+      colId: 'status',
+      headerName: t('Status'),
+      minWidth: 140,
+      valueGetter: (params) => ((params.data?.usedQuantity ?? 0) > (params.data?.plannedQuantity ?? 0) ? t('Overused') : t('Normal')),
+    });
+
+    return columns;
+  }, [isAdmin, t]);
+
+  const defaultColDef = useMemo<ColDef<EstimateLine>>(
+    () => ({
+      resizable: true,
+      sortable: true,
+      minWidth: 120,
+    }),
+    [],
+  );
+
+  if (!projectId) {
+    return (
+      <div className="space-y-6">
+        <Card className="border-border/70">
+          <CardContent className="flex flex-col gap-6 p-8 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-2xl">
+              <Badge variant="outline">Smeta workspace</Badge>
+              <h2 className="mt-4 text-3xl font-semibold tracking-tight">Select a project to work with smeta</h2>
+              <p className="mt-3 text-sm text-muted-foreground">
+                The estimate flow is project-specific. Pick the active object first so imports, line items, warehouse control, and month-end reconciliation stay in one context.
+              </p>
+            </div>
+            <Button asChild size="lg">
+              <Link to="/app/projects">
+                Open projects
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">{t('Estimate')}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{t('Construction estimate items and import')} ({total} {t('lines')})</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">Smeta workspace</Badge>
+            <Badge variant="secondary">{currentProject?.name}</Badge>
+          </div>
+          <h1 className="mt-3 text-2xl font-bold tracking-tight">Planned work and source quantities</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Import cost-plan workbooks, review planned lines, and push the project toward warehouse execution and M-29 reconciliation.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Card><CardContent className="p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">{t('Lines')}</p><p className="mt-2 text-2xl font-semibold">{total}</p></CardContent></Card>
+          <Card><CardContent className="p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Visible lines</p><p className="mt-2 text-2xl font-semibold">{filtered.length}</p></CardContent></Card>
+          <Card><CardContent className="p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Current project</p><p className="mt-2 truncate text-sm font-semibold">{currentProject?.name}</p></CardContent></Card>
         </div>
       </div>
 
@@ -96,47 +195,27 @@ export function EstimatePage() {
             <div className="p-4 border-b border-border">
               <Input placeholder={t('Search by code or name...')} value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-sm" />
             </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('Code')}</TableHead>
-                  <TableHead>{t('Name')}</TableHead>
-                  <TableHead>{t('Category')}</TableHead>
-                  <TableHead className="text-right">{t('Planned Qty')}</TableHead>
-                  <TableHead className="text-right">{t('Used Qty')}</TableHead>
-                  {isAdmin && <TableHead className="text-right">{t('Unit Price')}</TableHead>}
-                  {isAdmin && <TableHead className="text-right">{t('Total')}</TableHead>}
-                  <TableHead>{t('Status')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((line) => {
-                  const usedQuantity = line.usedQuantity ?? 0;
-                  const overused = usedQuantity > line.plannedQuantity;
-                  return (
-                    <TableRow key={line.id}>
-                      <TableCell className="font-mono text-xs">{line.code}</TableCell>
-                      <TableCell>{line.name}</TableCell>
-                      <TableCell className="text-muted-foreground">{line.category || '-'}</TableCell>
-                      <TableCell className="text-right">{line.plannedQuantity}</TableCell>
-                      <TableCell className="text-right">{usedQuantity}</TableCell>
-                      {isAdmin && <TableCell className="text-right">{line.plannedUnitPrice?.toLocaleString() || '-'}</TableCell>}
-                      {isAdmin && <TableCell className="text-right">{line.plannedTotalPrice?.toLocaleString() || '-'}</TableCell>}
-                      <TableCell>
-                        <Badge variant={overused ? 'danger' : 'success'}>
-                          {overused ? t('Overused') : t('Normal')}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-                {filtered.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={isAdmin ? 8 : 6} className="text-center text-muted-foreground py-8">{t('No estimate lines found')}</TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+            <div className="p-4">
+              <div className="mb-3 flex items-center justify-between gap-3 text-sm text-muted-foreground">
+                <span>Drag any column edge to resize.</span>
+                <span>{filtered.length} visible rows</span>
+              </div>
+              <div className="ag-theme-quartz-dark overflow-hidden rounded-lg border" style={{ height: 640 }}>
+                <AgGridReact<EstimateLine>
+                  theme={themeQuartz}
+                  rowData={filtered}
+                  columnDefs={columnDefs}
+                  defaultColDef={defaultColDef}
+                  pagination={false}
+                  headerHeight={44}
+                  rowHeight={44}
+                  animateRows
+                  suppressCellFocus
+                  suppressMovableColumns
+                  overlayNoRowsTemplate={`<span class="text-muted-foreground">${t('No estimate lines found')}</span>`}
+                />
+              </div>
+            </div>
             <div className="flex items-center justify-between p-4 border-t border-border text-sm text-muted-foreground">
               <span>{t('Page')} {page} {t('of')} {Math.ceil(total / 20) || 1}</span>
               <div className="flex gap-2">
@@ -148,12 +227,13 @@ export function EstimatePage() {
         </TabsContent>
 
         <TabsContent value="import" className="mt-4 space-y-4">
+          <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
           <Card>
-            <CardHeader><CardTitle className="text-sm">{t('Import Estimate')}</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-sm">Import smeta workbook</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <Input value={estName} onChange={(e) => setEstName(e.target.value)} placeholder={t('Estimate Name *')} />
               <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
-                <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                <FileSpreadsheet className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
                 <p className="text-sm text-muted-foreground mb-3">{t('Upload Excel file (.xlsx, .xls)')}</p>
                 <Input type="file" accept=".xlsx,.xls" onChange={(e) => setExcelFile(e.target.files?.[0] || null)} />
                 {excelFile && <p className="text-xs text-muted-foreground mt-2">{t('Selected')}: {excelFile.name}</p>}
@@ -161,13 +241,6 @@ export function EstimatePage() {
                   {t('Import Excel File')}
                 </Button>
               </div>
-              <div className="relative my-4">
-                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border" /></div>
-                <div className="relative flex justify-center text-xs"><span className="bg-card px-2 text-muted-foreground">{t('OR paste JSON')}</span></div>
-              </div>
-              <Textarea value={estLines} onChange={(e) => setEstLines(e.target.value)} rows={4}
-                placeholder='[{"code":"P.1.1","name":"Concrete C300","plannedQuantity":100,"plannedUnitPrice":50000}]' />
-              <Button onClick={handleImportJson} disabled={!estName || !estLines}>{t('Import from JSON')}</Button>
               {importResult && (
                 <div className={`p-3 rounded-md text-sm ${importResult.includes('failed') || importResult.includes('Invalid') ? 'bg-destructive/10 text-destructive' : 'bg-green-500/10 text-green-400'}`}>
                   {importResult}
@@ -175,6 +248,47 @@ export function EstimatePage() {
               )}
             </CardContent>
           </Card>
+          <Card>
+            <CardHeader><CardTitle className="text-sm">What happens next</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="mt-0.5 h-5 w-5 text-emerald-400" />
+                  <div>
+                    <p className="font-medium">1. Import and validate the workbook</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Bring the approved smeta into one active project context.</p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+                <div className="flex items-start gap-3">
+                  <Warehouse className="mt-0.5 h-5 w-5 text-primary" />
+                  <div>
+                    <p className="font-medium">2. Issue materials against planned lines</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Warehouse control should follow planned scope, not raw ad hoc requests.</p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+                <div className="flex items-start gap-3">
+                  <ClipboardCheck className="mt-0.5 h-5 w-5 text-amber-400" />
+                  <div>
+                    <p className="font-medium">3. Reconcile month-end into M-29</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Close the period by comparing planned scope, actual movement, and write-off readiness.</p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button asChild variant="outline" className="flex-1">
+                  <Link to="/app/warehouse">Open warehouse</Link>
+                </Button>
+                <Button asChild className="flex-1">
+                  <Link to="/app/reports">Open reports</Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

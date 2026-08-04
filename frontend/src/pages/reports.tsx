@@ -1,5 +1,5 @@
 import { enumLabel } from '@/lib/i18n';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useApp } from '@/app/context';
 import { api } from '@/services/api';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { buildApiUrl } from '@/services/api';
-import { Download } from 'lucide-react';
+import { Clock3, Download, FileSpreadsheet, LayoutGrid, Settings2 } from 'lucide-react';
 import type { Paginated, ReportExport, ReportPeriod, ReportResult, ReportType } from '@/api/types';
 
 const reportTypes: { value: ReportType; label: string }[] = [
@@ -85,12 +85,70 @@ export function ReportsPage() {
   }
 
   const visibleTypes = reportTypes.filter((r) => isAdmin || r.value !== 'FINANCIAL');
+  const recentExports = history.slice(0, 5);
+  const selectedLabel = useMemo(
+    () => visibleTypes.find((item) => item.value === selectedType)?.label ?? 'Report',
+    [selectedType, visibleTypes],
+  );
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">{t('Reports')}</h1>
-        <p className="text-sm text-muted-foreground mt-1">{t('Generate and download project reports')}</p>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <Card>
+          <CardHeader className="gap-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">Reports</Badge>
+              {currentProject?.name ? <Badge variant="secondary">{currentProject.name}</Badge> : null}
+            </div>
+            <div className="space-y-2">
+              <CardTitle className="text-2xl">Generate and download project reports</CardTitle>
+              <p className="max-w-2xl text-sm text-muted-foreground">
+                Use predefined report packages for monthly closeout, estimate control, warehouse oversight, and risk review.
+              </p>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="rounded-xl border bg-muted/30 p-4">
+                <p className="text-sm text-muted-foreground">Available reports</p>
+                <p className="mt-2 text-3xl font-semibold">{visibleTypes.length}</p>
+              </div>
+              <div className="rounded-xl border bg-muted/30 p-4">
+                <p className="text-sm text-muted-foreground">Generated exports</p>
+                <p className="mt-2 text-3xl font-semibold">{history.length}</p>
+              </div>
+              <div className="rounded-xl border bg-muted/30 p-4">
+                <p className="text-sm text-muted-foreground">Current default</p>
+                <p className="mt-2 text-base font-semibold">{selectedLabel}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Recent exports</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {recentExports.length > 0 ? recentExports.map((item) => (
+              <div key={item.id} className="rounded-xl border p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-medium">{enumLabel(item.reportType, language)}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {enumLabel(item.period, language)} • {new Date(item.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <Badge variant="outline">{item.format}</Badge>
+                </div>
+              </div>
+            )) : (
+              <div className="rounded-xl border p-4 text-sm text-muted-foreground">
+                No reports generated yet.
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
@@ -100,29 +158,49 @@ export function ReportsPage() {
         </TabsList>
 
         <TabsContent value="generate" className="mt-4 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {visibleTypes.map((r) => (
-              <button
-                key={r.value}
-                onClick={() => setSelectedType(r.value)}
-                className={cn(
-                  'p-4 rounded-lg border text-left transition-all hover:border-primary/50 bg-card',
-                  selectedType === r.value ? 'border-primary ring-1 ring-primary' : 'border-border'
-                )}
-              >
-                <p className="text-sm font-medium">{enumLabel(r.value, language)}</p>
-                <p className="text-xs text-muted-foreground mt-1">{t('Excel export')}</p>
-              </button>
-            ))}
-          </div>
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <LayoutGrid className="h-4 w-4 text-muted-foreground" />
+                  <CardTitle className="text-base">Report catalog</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {visibleTypes.map((r) => (
+                    <button
+                      key={r.value}
+                      onClick={() => setSelectedType(r.value)}
+                      className={cn(
+                        'rounded-xl border p-4 text-left transition-all hover:border-primary/50 hover:bg-muted/20',
+                        selectedType === r.value ? 'border-primary bg-muted/20 ring-1 ring-primary/40' : 'border-border'
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium">{enumLabel(r.value, language)}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{t('Excel export')}</p>
+                        </div>
+                        <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardHeader><CardTitle className="text-sm">{t('Report Settings')}</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Settings2 className="h-4 w-4 text-muted-foreground" />
+                  <CardTitle className="text-base">{t('Report Settings')}</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-xs text-muted-foreground">{t('Report Type')}</label>
-                  <div className="px-3 py-2 bg-muted rounded-md text-sm">{enumLabel(selectedType, language)}</div>
+                  <div className="rounded-md bg-muted px-3 py-2 text-sm">{enumLabel(selectedType, language)}</div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs text-muted-foreground">{t('Period')}</label>
@@ -132,26 +210,34 @@ export function ReportsPage() {
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs text-muted-foreground">{t('Format')}</label>
-                  <div className="px-3 py-2 bg-muted rounded-md text-sm text-muted-foreground">{t('Excel (.xlsx)')}</div>
+                  <div className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{t('Excel (.xlsx)')}</div>
                 </div>
-              </div>
-              <Button onClick={handleGenerate} disabled={generating}>
-                {generating ? t('Generating...') : t('Generate Report')}
-              </Button>
-              {result && (
-                <div className="flex items-center gap-3 p-3 bg-green-500/10 border border-green-500/20 rounded-md">
-                  <p className="text-sm text-green-400">{t('Report ready!')}</p>
-                  <Button variant="secondary" size="sm" onClick={() => handleDownload(result.filePath)}>
-                    <Download className="w-3 h-3 mr-1" /> {t('Download')}
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                <Button className="w-full" onClick={handleGenerate} disabled={generating}>
+                  {generating ? t('Generating...') : t('Generate Report')}
+                </Button>
+                {result ? (
+                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3">
+                    <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">{t('Report ready!')}</p>
+                    <Button variant="secondary" size="sm" className="mt-3 w-full" onClick={() => handleDownload(result.filePath)}>
+                      <Download className="mr-2 h-3 w-3" />
+                      {t('Download')}
+                    </Button>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="history" className="mt-4">
           <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Clock3 className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-base">Export history</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -185,6 +271,7 @@ export function ReportsPage() {
                 )}
               </TableBody>
             </Table>
+            </CardContent>
           </Card>
         </TabsContent>
       </Tabs>

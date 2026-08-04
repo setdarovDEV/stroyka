@@ -57,17 +57,17 @@ export function RegisterPage() {
               STROYK<span className="text-primary">A</span>
             </h1>
             <p className="text-lg text-muted-foreground max-w-sm mx-auto leading-relaxed">
-              {t('Create your account to access the construction control system. Admins manage projects, Prorabs handle site operations.')}
+              Create an account for smeta control, warehouse operations, and M-29 closeout.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3 border-t pt-6 text-left">
             <div>
               <p className="text-xs text-muted-foreground">{t('Director')}</p>
-              <p className="text-sm font-medium">{t('Full control')}</p>
+              <p className="text-sm font-medium">Portfolio and approvals</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">{t('Prorab')}</p>
-              <p className="text-sm font-medium">{t('Site execution')}</p>
+              <p className="text-sm font-medium">Site execution and requests</p>
             </div>
           </div>
         </div>
@@ -77,11 +77,11 @@ export function RegisterPage() {
         <Card className="w-full max-w-md border-border/40 shadow-none">
           <CardHeader className="space-y-1 text-center pb-4">
             <Link to="/login" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors mb-2">
-              <ArrowLeft className="w-4 h-4" /> {t('Back to login')}
-            </Link>
-            <CardTitle className="text-2xl font-bold tracking-tight">{t('Create account')}</CardTitle>
-            <CardDescription className="text-sm">{t('Fill in your details to get started')}</CardDescription>
-          </CardHeader>
+            <ArrowLeft className="w-4 h-4" /> {t('Back to login')}
+          </Link>
+          <CardTitle className="text-2xl font-bold tracking-tight">{t('Create account')}</CardTitle>
+          <CardDescription className="text-sm">Start with one role and join the active project workflow</CardDescription>
+        </CardHeader>
 
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">

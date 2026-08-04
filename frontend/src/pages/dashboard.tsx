@@ -1,17 +1,41 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, FileSpreadsheet, Upload } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import {
+  AlertTriangle,
+  ArrowRight,
+  Bell,
+  Boxes,
+  CheckCircle2,
+  ClipboardCheck,
+  Download,
+  FileSpreadsheet,
+  FolderKanban,
+  PackageCheck,
+  Upload,
+  Warehouse,
+} from 'lucide-react';
 import { useApp } from '@/app/context';
 import { api, errorMessage } from '@/services/api';
+import { enumLabel } from '@/lib/i18n';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
+import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { cn } from '@/lib/utils';
-import type { Estimate, EstimateImportSummary, EstimateLine, EstimateWorkbookImportResult, Paginated, WorkbookPreviewCell } from '@/api/types';
+import type {
+  Alert,
+  Estimate,
+  EstimateImportSummary,
+  EstimateWorkbookImportResult,
+  MaterialRequest,
+  Paginated,
+  WarehouseItem,
+} from '@/api/types';
 
-function formatDate(value?: string) {
+function formatDate(value?: string | null) {
   if (!value) return '-';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
@@ -21,167 +45,202 @@ function formatNumber(value?: number | null) {
   return (value ?? 0).toLocaleString();
 }
 
-function formatCurrency(value?: number | null) {
-  return (value ?? 0).toLocaleString();
+function formatStatus(status?: string | null) {
+  return status ? status.replace(/_/g, ' ') : '-';
 }
 
-function MetricCard({ label, value }: { label: string; value: string | number }) {
+function ActionTile({
+  to,
+  title,
+  description,
+  icon: Icon,
+  badge,
+}: {
+  to: string;
+  title: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: string;
+}) {
+  return (
+    <Card className="transition-colors hover:border-primary/40">
+      <CardContent className="p-0">
+        <Link className="flex h-full flex-col gap-4 p-5" to={to}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-muted text-foreground">
+              <Icon className="h-5 w-5" />
+            </div>
+            {badge ? (
+              <Badge variant="outline">
+                {badge}
+              </Badge>
+            ) : null}
+          </div>
+          <div className="space-y-1">
+            <p className="font-medium">{title}</p>
+            <p className="text-sm text-muted-foreground">{description}</p>
+          </div>
+          <div className="mt-auto flex items-center gap-2 text-sm font-medium text-primary">
+            <span>Open</span>
+            <ArrowRight className="h-4 w-4" />
+          </div>
+        </Link>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SnapshotCard({
+  label,
+  value,
+  tone = 'default',
+  caption,
+}: {
+  label: string;
+  value: string | number;
+  tone?: 'default' | 'good' | 'warn';
+  caption?: string;
+}) {
+  const toneClass =
+    tone === 'good'
+      ? 'text-emerald-600 dark:text-emerald-400'
+      : tone === 'warn'
+        ? 'text-amber-600 dark:text-amber-400'
+        : 'text-foreground';
+
   return (
     <Card>
-      <CardContent className="p-4">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-        <p className="mt-2 text-2xl font-semibold">{value}</p>
+      <CardContent className="p-5">
+        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className={`mt-3 text-3xl font-semibold tracking-tight ${toneClass}`}>{value}</p>
+        {caption ? <p className="mt-2 text-sm text-muted-foreground">{caption}</p> : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function WorkflowStage({
+  step,
+  title,
+  icon: Icon,
+  status,
+  hint,
+  metrics,
+  actionLabel,
+  actionTo,
+  children,
+}: {
+  step: string;
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  status: string;
+  hint: string;
+  metrics: Array<{ label: string; value: string | number }>;
+  actionLabel: string;
+  actionTo: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <Card>
+      <CardContent className="p-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-muted text-foreground">
+              <Icon className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{step}</p>
+              <h3 className="text-lg font-semibold">{title}</h3>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Badge variant="outline">{status}</Badge>
+            <p className="text-sm text-muted-foreground">{hint}</p>
+          </div>
+        </div>
+        <Button asChild variant="outline" className="shrink-0">
+          <Link to={actionTo}>
+            {actionLabel}
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Link>
+        </Button>
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-3">
+        {metrics.map((metric) => (
+          <div key={metric.label} className="rounded-xl border bg-muted/30 px-4 py-3">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">{metric.label}</p>
+            <p className="mt-2 text-xl font-semibold">{metric.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {children ? (
+        <>
+          <Separator className="my-5" />
+          {children}
+        </>
+      ) : null}
       </CardContent>
     </Card>
   );
 }
 
 export function DashboardPage() {
-  const { currentProject, t, user, language } = useApp();
+  const { currentProject, t, language } = useApp();
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [documents, setDocuments] = useState<Estimate[]>([]);
-  const [selectedDocumentId, setSelectedDocumentId] = useState<string>('');
-  const [selectedDocumentDetail, setSelectedDocumentDetail] = useState<Estimate | null>(null);
-  const [loadingPreview, setLoadingPreview] = useState(false);
-  const [lines, setLines] = useState<EstimateLine[]>([]);
-  const [search, setSearch] = useState('');
+  const [warehouseItems, setWarehouseItems] = useState<WarehouseItem[]>([]);
+  const [requests, setRequests] = useState<MaterialRequest[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
   const [documentName, setDocumentName] = useState('');
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const [statusMessage, setStatusMessage] = useState('');
   const [lastImportSummary, setLastImportSummary] = useState<EstimateImportSummary | null>(null);
-  const [previewMode, setPreviewMode] = useState<'exact' | 'structured'>('exact');
 
-  const isAdmin = user?.role === 'ADMIN';
   const projectId = currentProject?.id;
-  const selectedDocument = documents.find((item) => item.id === selectedDocumentId) ?? null;
-  const exactPreview = selectedDocumentDetail?.workbookPreview ?? null;
 
-  const loadDocuments = useCallback(async () => {
+  const loadOverview = useCallback(async () => {
     if (!projectId) {
       setDocuments([]);
-      setSelectedDocumentId('');
-      setLines([]);
+      setWarehouseItems([]);
+      setRequests([]);
+      setAlerts([]);
       setLoading(false);
       return;
     }
 
     setLoading(true);
     try {
-      const res = await api.get<Paginated<Estimate>>(`/estimates?projectId=${projectId}&page=1&limit=100`);
-      const items = res.items ?? [];
-      setDocuments(items);
-      setSelectedDocumentId((current) => {
-        if (current && items.some((item) => item.id === current)) return current;
-        return items[0]?.id ?? '';
-      });
+      const [documentsRes, warehouseRes, requestsRes, alertsRes] = await Promise.all([
+        api.get<Paginated<Estimate>>(`/estimates?projectId=${projectId}&page=1&limit=8`),
+        api.get<Paginated<WarehouseItem>>(`/warehouse?projectId=${projectId}&page=1&limit=100`),
+        api.get<Paginated<MaterialRequest>>(`/material-requests?projectId=${projectId}&page=1&limit=20`),
+        api.get<Paginated<Alert>>(`/alerts?projectId=${projectId}&page=1&limit=20`),
+      ]);
+
+      setDocuments(documentsRes.items ?? []);
+      setWarehouseItems(warehouseRes.items ?? []);
+      setRequests(requestsRes.items ?? []);
+      setAlerts(alertsRes.items ?? []);
     } catch (error) {
-      setStatusMessage(errorMessage(error, t('Failed to load cost plan documents')));
-      setDocuments([]);
-      setSelectedDocumentId('');
-      setLines([]);
+      setStatusMessage(errorMessage(error, 'Failed to load workbench data'));
     } finally {
       setLoading(false);
     }
-  }, [projectId, t]);
-
-  const loadSelectedDocumentDetail = useCallback(async () => {
-    if (!selectedDocumentId) {
-      setSelectedDocumentDetail(null);
-      setLoadingPreview(false);
-      return;
-    }
-
-    setLoadingPreview(true);
-    try {
-      const estimate = await api.get<Estimate>(`/estimates/${selectedDocumentId}`);
-      setSelectedDocumentDetail(estimate);
-    } catch (error) {
-      setStatusMessage(errorMessage(error, t('Failed to load cost plan preview')));
-      setSelectedDocumentDetail(null);
-    } finally {
-      setLoadingPreview(false);
-    }
-  }, [selectedDocumentId, t]);
-
-  const loadLines = useCallback(async () => {
-    if (!projectId || !selectedDocumentId) {
-      setLines([]);
-      return;
-    }
-
-    try {
-      const pageSize = 500;
-      const firstPage = await api.get<Paginated<EstimateLine>>(
-        `/estimate-lines?projectId=${projectId}&estimateId=${selectedDocumentId}&page=1&limit=${pageSize}`,
-      );
-
-      const firstItems = firstPage.items ?? [];
-      const totalPages = firstPage.pages ?? 1;
-      if (totalPages <= 1) {
-        setLines(firstItems);
-        return;
-      }
-
-      const pageRequests: Array<Promise<Paginated<EstimateLine>>> = [];
-      for (let page = 2; page <= totalPages; page += 1) {
-        pageRequests.push(
-          api.get<Paginated<EstimateLine>>(
-            `/estimate-lines?projectId=${projectId}&estimateId=${selectedDocumentId}&page=${page}&limit=${pageSize}`,
-          ),
-        );
-      }
-
-      const remainingPages = await Promise.all(pageRequests);
-      setLines([
-        ...firstItems,
-        ...remainingPages.flatMap((page) => page.items ?? []),
-      ]);
-    } catch (error) {
-      setStatusMessage(errorMessage(error, t('Failed to load cost plan lines')));
-      setLines([]);
-    }
-  }, [projectId, selectedDocumentId, t]);
+  }, [projectId]);
 
   useEffect(() => {
-    void loadDocuments();
-  }, [loadDocuments]);
-
-  useEffect(() => {
-    void loadLines();
-  }, [loadLines]);
-
-  useEffect(() => {
-    void loadSelectedDocumentDetail();
-  }, [loadSelectedDocumentDetail]);
-
-  const filteredLines = useMemo(() => {
-    const normalized = search.trim().toLowerCase();
-    if (!normalized) return lines;
-    return lines.filter((line) =>
-      [line.code, line.name, line.category, line.notes]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(normalized)),
-    );
-  }, [lines, search]);
-
-  const totals = useMemo(() => {
-    const sectionCount = lines.filter((line) => line.rowType === 'SECTION').length;
-    const workCount = lines.filter((line) => line.rowType === 'WORK').length;
-    const resourceCount = lines.filter((line) => line.rowType === 'RESOURCE').length;
-    const totalValue = lines.reduce((sum, line) => sum + (line.plannedTotalPrice ?? 0), 0);
-    return {
-      lineCount: workCount,
-      sectionCount,
-      resourceCount,
-      totalValue,
-    };
-  }, [lines]);
+    void loadOverview();
+  }, [loadOverview]);
 
   async function downloadTemplate() {
     setDownloadingTemplate(true);
     setStatusMessage('');
+
     try {
       const { blob, fileName } = await api.download('/estimates/template');
       const url = URL.createObjectURL(blob);
@@ -203,6 +262,7 @@ export function DashboardPage() {
 
     setImporting(true);
     setStatusMessage(t('Processing...'));
+
     try {
       const formData = new FormData();
       formData.set('projectId', projectId);
@@ -213,13 +273,10 @@ export function DashboardPage() {
       setDocumentName('');
       setExcelFile(null);
       setLastImportSummary(created.summary);
-      setSelectedDocumentDetail(created.estimate);
-      setLoadingPreview(false);
       setStatusMessage(
-        `${t('Imported')}: ${created.summary.sectionsCount} ${t('sections')}, ${created.summary.workRowsCount} ${t('work rows')}, ${created.summary.resourceRowsCount} ${t('resource rows')}, ${created.summary.warningsCount} ${t('warnings')}`,
+        `${t('Imported')}: ${created.summary.sectionsCount} ${t('sections')}, ${created.summary.workRowsCount} ${t('work rows')}, ${created.summary.resourceRowsCount} ${t('resource rows')}`,
       );
-      await loadDocuments();
-      setSelectedDocumentId(created.estimate.id);
+      await loadOverview();
     } catch (error) {
       setStatusMessage(`${t('Excel import failed')}: ${errorMessage(error, t('Unknown error'))}`);
     } finally {
@@ -227,310 +284,522 @@ export function DashboardPage() {
     }
   }
 
-  if (loading && !documents.length) {
+  const latestDocument = documents[0] ?? null;
+  const importedLines = documents.reduce((sum, item) => sum + (item._count?.lines ?? 0), 0);
+  const lowStockItems = warehouseItems.filter((item) => item.status === 'LOW' || item.status === 'OUT');
+  const unresolvedAlerts = alerts.filter((item) => item.status !== 'RESOLVED');
+  const criticalAlerts = unresolvedAlerts.filter((item) => item.severity === 'CRITICAL');
+  const openRequests = requests.filter((item) => item.status !== 'FULFILLED' && item.status !== 'REJECTED');
+  const m29Ready = Boolean(latestDocument) && criticalAlerts.length === 0 && lowStockItems.length === 0;
+  const workflowChecks = [Boolean(latestDocument), lowStockItems.length === 0, criticalAlerts.length === 0];
+  const readinessScore = Math.round((workflowChecks.filter(Boolean).length / workflowChecks.length) * 100);
+
+  const attentionItems = useMemo(() => {
+    const items: Array<{
+      title: string;
+      detail: string;
+      tone: 'good' | 'warn';
+      to: string;
+      action: string;
+    }> = [];
+
+    if (!latestDocument) {
+      items.push({
+        title: 'Import the current cost plan',
+        detail: 'The workbench has no active smeta workbook for this project.',
+        tone: 'warn',
+        to: '/app/estimate',
+        action: 'Open estimate',
+      });
+    }
+
+    if (lowStockItems.length > 0) {
+      items.push({
+        title: `${lowStockItems.length} stock items need review`,
+        detail: 'Inventory balance is low or out on materials linked to site execution.',
+        tone: 'warn',
+        to: '/app/warehouse',
+        action: 'Open warehouse',
+      });
+    }
+
+    if (openRequests.length > 0) {
+      items.push({
+        title: `${openRequests.length} material requests are still open`,
+        detail: 'Field demand is waiting on warehouse confirmation or fulfillment.',
+        tone: 'warn',
+        to: '/app/material-requests',
+        action: 'Review requests',
+      });
+    }
+
+    if (criticalAlerts.length > 0) {
+      items.push({
+        title: `${criticalAlerts.length} critical alerts need action`,
+        detail: 'Resolve blockers before closing the current reporting period.',
+        tone: 'warn',
+        to: '/app/alerts',
+        action: 'Open alerts',
+      });
+    }
+
+    if (items.length === 0) {
+      items.push({
+        title: 'Project flow looks healthy',
+        detail: 'No critical blockers are visible across smeta, warehouse, and period control.',
+        tone: 'good',
+        to: '/app/reports',
+        action: 'Open reports',
+      });
+    }
+
+    return items.slice(0, 4);
+  }, [criticalAlerts.length, latestDocument, lowStockItems.length, openRequests.length]);
+
+  if (!projectId) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <p className="text-sm text-muted-foreground">{t('Loading dashboard...')}</p>
+      <div className="space-y-6">
+        <Card>
+          <CardContent className="flex flex-col gap-6 p-8 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-2xl">
+              <Badge variant="outline">Workbench</Badge>
+              <h1 className="mt-4 text-3xl font-semibold tracking-tight">Choose a project before starting the workflow</h1>
+              <p className="mt-3 text-sm text-muted-foreground">
+                This dashboard is designed to drive one active construction object through smeta import, warehouse control, and M-29 closeout.
+              </p>
+            </div>
+            <Button asChild size="lg">
+              <Link to="/app/projects">
+                <FolderKanban className="mr-2 h-4 w-4" />
+                {t('Projects')}
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
-  function argbToCss(value?: string | null) {
-    if (!value || value.length !== 8) return undefined;
-    return `#${value.slice(2)}`;
-  }
-
-  function previewCellStyle(cell: WorkbookPreviewCell): React.CSSProperties {
-    return {
-      backgroundColor: argbToCss(cell.style?.backgroundColor),
-      color: argbToCss(cell.style?.color) ?? '#000000',
-      fontWeight: cell.style?.bold ? 700 : 400,
-      fontStyle: cell.style?.italic ? 'italic' : 'normal',
-      fontSize: cell.style?.fontSize ? `${cell.style.fontSize}px` : undefined,
-      textAlign: (cell.style?.horizontalAlign as React.CSSProperties['textAlign']) ?? 'left',
-      verticalAlign: (cell.style?.verticalAlign as React.CSSProperties['verticalAlign']) ?? 'middle',
-      whiteSpace: cell.style?.wrapText ? 'pre-wrap' : 'pre-line',
-      borderTop: cell.style?.borderTop ? '1px solid hsl(var(--border))' : '1px solid hsl(var(--border))',
-      borderRight: cell.style?.borderRight ? '1px solid hsl(var(--border))' : '1px solid hsl(var(--border))',
-      borderBottom: cell.style?.borderBottom ? '1px solid hsl(var(--border))' : '1px solid hsl(var(--border))',
-      borderLeft: cell.style?.borderLeft ? '1px solid hsl(var(--border))' : '1px solid hsl(var(--border))',
-      padding: '0.4rem 0.5rem',
-      minWidth: '3rem',
-    };
-  }
-
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">{t('Project Cost Plan')}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t('Upload a project cost plan file, download the template, and review imported line items')} - {currentProject?.name}
-          </p>
-        </div>
-        <Button variant="outline" onClick={downloadTemplate} disabled={downloadingTemplate}>
-          <Download className="mr-2 h-4 w-4" />
-          {downloadingTemplate ? t('Preparing template...') : t('Download Excel Template')}
-        </Button>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
         <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">{t('Import Cost Plan')}</CardTitle>
+          <CardHeader className="gap-4">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">Dashboard</Badge>
+                <Badge variant={m29Ready ? 'success' : 'warning'}>
+                  {m29Ready ? 'Ready for M-29' : 'Action required'}
+                </Badge>
+                {currentProject?.status ? (
+                  <Badge variant="secondary">{enumLabel(currentProject.status, language)}</Badge>
+                ) : null}
+              </div>
+              <CardTitle className="text-2xl">{currentProject.name}</CardTitle>
+              <p className="max-w-2xl text-sm text-muted-foreground">
+                Manage one project through estimate import, warehouse control, and month-end M-29 preparation.
+              </p>
+              </div>
+              <div className="grid w-full gap-2 sm:w-auto sm:grid-cols-1">
+                <Button asChild className="w-full sm:min-w-[9.75rem]">
+                  <Link to="/app/projects">
+                    <FolderKanban className="mr-2 h-4 w-4" />
+                    New project
+                  </Link>
+                </Button>
+                <Button asChild variant="outline" className="w-full sm:min-w-[9.75rem]">
+                  <Link to="/app/reports">
+                    <ClipboardCheck className="mr-2 h-4 w-4" />
+                    Open closeout
+                  </Link>
+                </Button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {!projectId && (
-              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-                {t('Select a project before importing a cost plan')}
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="rounded-xl border bg-muted/30 p-4">
+                <p className="text-sm text-muted-foreground">{t('Current')}</p>
+                <p className="mt-2 font-medium">{currentProject.name}</p>
               </div>
-            )}
-            <Input
-              value={documentName}
-              onChange={(event) => setDocumentName(event.target.value)}
-              placeholder={t('Document Name *')}
-              disabled={!projectId}
-            />
-            <div className="rounded-lg border-2 border-dashed border-border p-6 text-center">
-              <FileSpreadsheet className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">{t('Upload Excel file (.xlsx, .xls)')}</p>
-              <Input
-                className="mt-3"
-                type="file"
-                accept=".xlsx,.xls"
-                disabled={!projectId}
-                onChange={(event) => setExcelFile(event.target.files?.[0] || null)}
-              />
-              {excelFile && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {t('Selected')}: {excelFile.name}
-                </p>
-              )}
-              <Button className="mt-4" onClick={importExcel} disabled={!projectId || !documentName || !excelFile || importing}>
-                <Upload className="mr-2 h-4 w-4" />
-                {importing ? t('Processing...') : t('Import Excel File')}
-              </Button>
+              <div className="rounded-xl border bg-muted/30 p-4">
+                <p className="text-sm text-muted-foreground">{t('Start')}</p>
+                <p className="mt-2 font-medium">{formatDate(currentProject.startDate)}</p>
+              </div>
+              <div className="rounded-xl border bg-muted/30 p-4">
+                <p className="text-sm text-muted-foreground">{t('End')}</p>
+                <p className="mt-2 font-medium">{formatDate(currentProject.plannedEndDate)}</p>
+              </div>
             </div>
-            {statusMessage && (
-              <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
-                {statusMessage}
+            <div className="space-y-3 rounded-xl border p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium">M-29 readiness</p>
+                  <p className="text-sm text-muted-foreground">Coverage across estimate, warehouse, and active blockers.</p>
+                </div>
+                <p className="text-2xl font-semibold">{readinessScore}%</p>
               </div>
-            )}
+              <Progress value={readinessScore} />
+            </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">{t('Imported Documents')}</CardTitle>
+            <CardTitle className="text-base">Attention queue</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {documents.length ? documents.map((item) => {
-              const active = item.id === selectedDocumentId;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setSelectedDocumentId(item.id)}
-                  className={`w-full rounded-lg border p-3 text-left transition ${
-                    active ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-medium">{item.name}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {t('Imported on')}: {formatDate(item.createdAt)}
-                      </p>
-                    </div>
-                    <Badge variant={active ? 'info' : 'secondary'}>
-                      {item._count?.lines ?? 0} {t('lines')}
-                    </Badge>
+            {attentionItems.map((item) => (
+              <div key={item.title} className="rounded-xl border p-4">
+                <div className="flex items-start gap-3">
+                  {item.tone === 'good' ? (
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-500" />
+                  ) : (
+                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">{item.title}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{item.detail}</p>
+                    <Button asChild variant="link" className="mt-2 h-auto px-0">
+                      <Link to={item.to}>{item.action}</Link>
+                    </Button>
                   </div>
-                </button>
-              );
-            }) : (
-              <p className="text-sm text-muted-foreground">
-                {projectId ? t('No imported cost plan documents') : t('Select a project to view imported documents')}
-              </p>
-            )}
+                </div>
+              </div>
+            ))}
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard label={t('Lines')} value={totals.lineCount} />
-        <MetricCard label={t('Sections')} value={totals.sectionCount} />
-        <MetricCard label={t('Resources')} value={totals.resourceCount} />
-        <MetricCard
-          label={isAdmin ? t('Planned Cost') : t('Document Status')}
-          value={isAdmin ? formatCurrency(totals.totalValue) : selectedDocument ? t('Imported') : '-'}
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <ActionTile
+          to="/app/estimate"
+          title="Smeta workspace"
+          description="Import, review, and structure project cost-plan documents."
+          icon={FileSpreadsheet}
+          badge={`${documents.length} docs`}
+        />
+        <ActionTile
+          to="/app/warehouse"
+          title="Warehouse control"
+          description="Track stock, receipts, issues, and balance pressure before site work stalls."
+          icon={Warehouse}
+          badge={`${warehouseItems.length} items`}
+        />
+        <ActionTile
+          to="/app/material-requests"
+          title="Field requests"
+          description="Review material demand coming from site teams and move it through approval."
+          icon={PackageCheck}
+          badge={`${openRequests.length} open`}
+        />
+        <ActionTile
+          to="/app/reports"
+          title="Period close"
+          description="Prepare exports, check variances, and move toward month-end M-29 reporting."
+          icon={ClipboardCheck}
+          badge={m29Ready ? 'ready' : 'blocked'}
         />
       </div>
 
-      {lastImportSummary && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">{t('Last Import Summary')}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2 text-sm">
-            <Badge variant="secondary">{lastImportSummary.sectionsCount} {t('sections')}</Badge>
-            <Badge variant="secondary">{lastImportSummary.workRowsCount} {t('work rows')}</Badge>
-            <Badge variant="secondary">{lastImportSummary.resourceRowsCount} {t('resource rows')}</Badge>
-            <Badge variant="secondary">{lastImportSummary.subtotalRowsCount} {t('subtotal rows')}</Badge>
-            <Badge variant="secondary">{lastImportSummary.totalRowsCount} {t('total rows')}</Badge>
-            <Badge variant={lastImportSummary.warningsCount ? 'warning' : 'success'}>
-              {lastImportSummary.warningsCount} {t('warnings')}
-            </Badge>
-          </CardContent>
-        </Card>
-      )}
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+        <SnapshotCard
+          label={t('Imported Documents')}
+          value={documents.length}
+          tone={documents.length > 0 ? 'good' : 'warn'}
+          caption={latestDocument ? `Latest: ${formatDate(latestDocument.createdAt)}` : 'Bring in the current workbook'}
+        />
+        <SnapshotCard
+          label={t('Stock Items')}
+          value={warehouseItems.length}
+          caption={lowStockItems.length ? `${lowStockItems.length} flagged as low or out` : 'No stock pressure detected'}
+        />
+        <SnapshotCard
+          label={t('Material Requests')}
+          value={openRequests.length}
+          tone={openRequests.length > 0 ? 'warn' : 'good'}
+          caption={openRequests.length ? 'Open demand from the field' : 'No open requests'}
+        />
+        <SnapshotCard
+          label={t('Alerts')}
+          value={unresolvedAlerts.length}
+          tone={criticalAlerts.length > 0 ? 'warn' : unresolvedAlerts.length ? 'default' : 'good'}
+          caption={criticalAlerts.length ? `${criticalAlerts.length} critical` : 'No critical blockers'}
+        />
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Tabs defaultValue="smeta" className="h-full">
+          <Card className="flex h-full flex-col">
+            <CardHeader className="pb-0">
+              <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="smeta">Smeta</TabsTrigger>
+                  <TabsTrigger value="warehouse">Warehouse</TabsTrigger>
+                  <TabsTrigger value="m29">M-29</TabsTrigger>
+              </TabsList>
+            </CardHeader>
+            <CardContent className="flex-1 pt-4">
+              <TabsContent value="smeta" className="mt-0">
+                  <WorkflowStage
+                    step="01"
+                    title="Smeta ingestion"
+                    icon={FileSpreadsheet}
+                    status={latestDocument ? 'Document imported' : 'Waiting for workbook'}
+                    hint={latestDocument ? `Latest file: ${latestDocument.name}` : 'Import the current cost plan to activate downstream workflow.'}
+                    metrics={[
+                      { label: t('Imported Documents'), value: documents.length },
+                      { label: t('Lines'), value: formatNumber(importedLines) },
+                      { label: 'Latest import', value: latestDocument ? formatDate(latestDocument.createdAt) : '-' },
+                    ]}
+                    actionLabel="Open smeta"
+                    actionTo="/app/estimate"
+                  >
+                    <div className="space-y-4">
+                      <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                        <Input
+                          value={documentName}
+                          onChange={(event) => setDocumentName(event.target.value)}
+                          placeholder={t('Document Name *')}
+                        />
+                        <Button variant="outline" onClick={downloadTemplate} disabled={downloadingTemplate}>
+                          <Download className="mr-2 h-4 w-4" />
+                          {downloadingTemplate ? t('Preparing template...') : t('Download Excel Template')}
+                        </Button>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                        <Input
+                          type="file"
+                          accept=".xlsx,.xls"
+                          onChange={(event) => setExcelFile(event.target.files?.[0] || null)}
+                        />
+                        <Button onClick={importExcel} disabled={!documentName || !excelFile || importing}>
+                          <Upload className="mr-2 h-4 w-4" />
+                          {importing ? t('Processing...') : t('Import Excel File')}
+                        </Button>
+                      </div>
+                      {excelFile ? (
+                        <p className="text-xs text-muted-foreground">{t('Selected')}: {excelFile.name}</p>
+                      ) : null}
+                      {lastImportSummary ? (
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="secondary">{lastImportSummary.sectionsCount} {t('sections')}</Badge>
+                          <Badge variant="secondary">{lastImportSummary.workRowsCount} {t('work rows')}</Badge>
+                          <Badge variant="secondary">{lastImportSummary.resourceRowsCount} {t('resource rows')}</Badge>
+                          <Badge variant={lastImportSummary.warningsCount ? 'warning' : 'success'}>
+                            {lastImportSummary.warningsCount} {t('warnings')}
+                          </Badge>
+                        </div>
+                      ) : null}
+                    </div>
+                  </WorkflowStage>
+              </TabsContent>
+              <TabsContent value="warehouse" className="mt-0">
+                  <WorkflowStage
+                    step="02"
+                    title="Warehouse control"
+                    icon={Boxes}
+                    status={lowStockItems.length ? 'Stock review required' : 'Warehouse ready'}
+                    hint={lowStockItems.length ? 'Low or empty balances can break field progress and distort month-end write-off.' : 'Material movement looks stable for the current period.'}
+                    metrics={[
+                      { label: t('Stock Items'), value: warehouseItems.length },
+                      { label: 'Low / Out', value: lowStockItems.length },
+                      { label: t('Pending Confirmations'), value: openRequests.length },
+                    ]}
+                    actionLabel="Open warehouse"
+                    actionTo="/app/warehouse"
+                  >
+                    <div className="space-y-3">
+                      {lowStockItems.slice(0, 3).map((item) => (
+                        <div key={item.id} className="flex items-center justify-between rounded-xl border px-4 py-3">
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{item.material?.name || item.materialId}</p>
+                            <p className="text-sm text-muted-foreground">
+                              Balance {formatNumber(item.currentBalance)} • Available {formatNumber(item.availableQuantity ?? item.currentBalance)}
+                            </p>
+                          </div>
+                          <Badge variant={item.status === 'OUT' ? 'danger' : 'warning'}>
+                            {enumLabel(item.status || 'NORMAL', language)}
+                          </Badge>
+                        </div>
+                      ))}
+                      {lowStockItems.length === 0 ? (
+                        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-400">
+                          No low-stock materials are visible on the current warehouse snapshot.
+                        </div>
+                      ) : null}
+                    </div>
+                  </WorkflowStage>
+              </TabsContent>
+              <TabsContent value="m29" className="mt-0">
+                  <WorkflowStage
+                    step="03"
+                    title="M-29 readiness"
+                    icon={ClipboardCheck}
+                    status={m29Ready ? 'Ready to reconcile' : 'Closeout blockers detected'}
+                    hint={m29Ready ? 'The project is in a good state to reconcile planned quantities, stock movement, and month-end write-off.' : 'Clear the blockers below before turning this period into an M-29 package.'}
+                    metrics={[
+                      { label: 'Smeta', value: latestDocument ? 'ready' : 'missing' },
+                      { label: t('Warehouse'), value: lowStockItems.length ? 'review' : 'ready' },
+                      { label: t('Alerts'), value: criticalAlerts.length ? `${criticalAlerts.length} critical` : 'clear' },
+                    ]}
+                    actionLabel="Open reports"
+                    actionTo="/app/reports"
+                  >
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="rounded-xl border p-4">
+                        <p className="text-sm font-medium">What the month-end flow needs</p>
+                        <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+                          <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-500" /> Current smeta document imported</li>
+                          <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-500" /> Warehouse movements reviewed</li>
+                          <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-500" /> Variances and critical alerts resolved</li>
+                        </ul>
+                      </div>
+                      <div className="rounded-xl border p-4">
+                        <p className="text-sm font-medium">Current blockers</p>
+                        <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+                          <p>{latestDocument ? `Latest workbook: ${latestDocument.name}` : 'No smeta workbook imported yet.'}</p>
+                          <p>{lowStockItems.length ? `${lowStockItems.length} warehouse items are below safe balance.` : 'Warehouse balance checks are clean.'}</p>
+                          <p>{criticalAlerts.length ? `${criticalAlerts.length} critical alerts are unresolved.` : 'No critical alert is blocking closeout.'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </WorkflowStage>
+              </TabsContent>
+            </CardContent>
+          </Card>
+        </Tabs>
+
+        <div className="space-y-4">
+          <Card className="h-full">
+            <CardHeader>
+              <CardTitle className="text-base">Recent signals</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {latestDocument ? (
+                <div className="rounded-xl border p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-medium">{latestDocument.name}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {t('Imported on')}: {formatDate(latestDocument.createdAt)}
+                      </p>
+                    </div>
+                    <Badge variant="info">{latestDocument._count?.lines ?? 0} {t('lines')}</Badge>
+                  </div>
+                </div>
+              ) : null}
+
+              {alerts.slice(0, 3).map((item) => (
+                <div key={item.id} className="rounded-xl border p-4">
+                  <div className="flex items-start gap-3">
+                    <Bell className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium">{item.title}</p>
+                        <Badge variant={item.severity === 'CRITICAL' ? 'danger' : item.severity === 'WARNING' ? 'warning' : 'info'}>
+                          {enumLabel(item.severity, language)}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">{item.message}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {!latestDocument && alerts.length === 0 ? (
+                <div className="rounded-xl border p-4 text-sm text-muted-foreground">
+                  No recent project signals yet. Import smeta or start moving stock to activate the workbench.
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          {statusMessage ? (
+            <Card>
+              <CardContent className="p-4 text-sm text-muted-foreground">{statusMessage}</CardContent>
+            </Card>
+          ) : null}
+        </div>
+      </div>
 
       <Card>
-        <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <CardTitle>{selectedDocument?.name ?? t('Imported Line Items')}</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {previewMode === 'exact'
-                ? t('Exact workbook preview with original Excel text and columns')
-                : selectedDocument?.description || t('Structured view of imported project cost plan rows')}
-            </p>
+            <CardTitle className="text-base">Operational overview</CardTitle>
+            <p className="text-sm text-muted-foreground">Recent estimate imports, field demand, and warehouse pressure in one table.</p>
           </div>
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder={t('Search by code, name, section, or notes...')}
-            className="w-full lg:max-w-sm"
-          />
+          <Button asChild variant="outline">
+            <Link to="/app/estimate">
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Open estimate workspace
+            </Link>
+          </Button>
         </CardHeader>
         <CardContent>
-          <Tabs value={previewMode} onValueChange={(value) => setPreviewMode(value as 'exact' | 'structured')}>
-            <TabsList className="mb-4">
-              <TabsTrigger value="exact">{t('Exact Preview')}</TabsTrigger>
-              <TabsTrigger value="structured">{t('Structured View')}</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="exact" className="mt-0">
-              {loadingPreview ? (
-                <div className="py-10 text-center text-muted-foreground">
-                  {t('Loading workbook preview...')}
-                </div>
-              ) : exactPreview ? (
-                <div className="space-y-3">
-                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    <Badge variant="outline">{language.toUpperCase()} UI</Badge>
-                    <Badge variant="outline">{t('Workbook text kept as imported')}</Badge>
-                    <Badge variant="outline">{exactPreview?.rows.length ?? 0} {t('rows')}</Badge>
-                  </div>
-                  <div className="max-h-[720px] overflow-auto rounded-lg border border-border bg-white">
-                    <table className="min-w-max border-collapse text-sm">
-                      <colgroup>
-                        {exactPreview.columns.map((column) => (
-                          <col
-                            key={column.column}
-                            style={{ width: column.width ? `${Math.max(column.width * 8, 48)}px` : undefined }}
-                          />
-                        ))}
-                      </colgroup>
-                      <tbody>
-                        {exactPreview.rows.map((row) => (
-                          <tr key={row.rowNumber} style={{ height: row.height ? `${row.height}px` : undefined }}>
-                            {row.cells.map((cell) => (
-                              <td
-                                key={`${row.rowNumber}-${cell.column}`}
-                                colSpan={cell.colSpan}
-                                rowSpan={cell.rowSpan}
-                                style={previewCellStyle(cell)}
-                              >
-                                {cell.value || '\u00A0'}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ) : (
-                <div className="py-10 text-center text-muted-foreground">
-                  {selectedDocument
-                    ? t('Workbook preview is not available for this document. Re-import the workbook to generate an exact 1:1 preview.')
-                    : projectId
-                      ? t('Import a cost plan to see line items here')
-                      : t('Select a project to view imported line items')}
-                </div>
-              )}
-            </TabsContent>
-
-            <TabsContent value="structured" className="mt-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t('Code')}</TableHead>
-                    <TableHead>{t('Name')}</TableHead>
-                    <TableHead>{t('Category')}</TableHead>
-                    <TableHead>{t('Row Type')}</TableHead>
-                    <TableHead>{t('Type')}</TableHead>
-                    <TableHead>{t('Unit')}</TableHead>
-                    <TableHead className="text-right">{t('Planned Qty')}</TableHead>
-                    {isAdmin && <TableHead className="text-right">{t('Unit Price')}</TableHead>}
-                    {isAdmin && <TableHead className="text-right">{t('Total')}</TableHead>}
-                    <TableHead>{t('Notes')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredLines.length ? filteredLines.map((line) => (
-                    <TableRow
-                      key={line.id}
-                      className={cn(
-                        line.rowType === 'SECTION' && 'bg-muted/40 font-semibold',
-                        line.rowType === 'SUBTOTAL' && 'bg-muted/20',
-                        line.rowType === 'TOTAL' && 'bg-primary/5 font-semibold',
-                      )}
-                    >
-                      <TableCell className="font-mono text-xs">{line.code}</TableCell>
-                      <TableCell className={cn(
-                        'font-medium',
-                        line.rowType === 'WORK' && 'pl-6',
-                        line.rowType === 'RESOURCE' && 'pl-10',
-                        (line.rowType === 'SUBTOTAL' || line.rowType === 'TOTAL') && 'pl-6',
-                      )}>
-                        {line.name}
-                      </TableCell>
-                      <TableCell>{line.category || '-'}</TableCell>
-                      <TableCell>
-                        <Badge variant={
-                          line.rowType === 'SECTION' ? 'info' :
-                          line.rowType === 'WORK' ? 'secondary' :
-                          line.rowType === 'RESOURCE' ? 'outline' :
-                          line.rowType === 'SUBTOTAL' ? 'warning' : 'success'
-                        }>
-                          {line.rowType || '-'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{line.itemType || 'MATERIAL'}</TableCell>
-                      <TableCell>{line.unitLabelRaw || '-'}</TableCell>
-                      <TableCell className="text-right">{formatNumber(line.plannedQuantity)}</TableCell>
-                      {isAdmin && <TableCell className="text-right">{formatCurrency(line.plannedUnitPrice)}</TableCell>}
-                      {isAdmin && <TableCell className="text-right">{formatCurrency(line.plannedTotalPrice)}</TableCell>}
-                      <TableCell className="max-w-72 truncate text-muted-foreground">{line.notes || '-'}</TableCell>
-                    </TableRow>
-                  )) : (
-                    <TableRow>
-                      <TableCell colSpan={isAdmin ? 10 : 8} className="py-10 text-center text-muted-foreground">
-                        {selectedDocument
-                          ? t('No matching line items found')
-                          : projectId
-                            ? t('Import a cost plan to see line items here')
-                            : t('Select a project to view imported line items')}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </TabsContent>
-          </Tabs>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Area</TableHead>
+                <TableHead>Item</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Detail</TableHead>
+                <TableHead className="text-right">Date</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {latestDocument ? (
+                <TableRow>
+                  <TableCell className="font-medium">Smeta</TableCell>
+                  <TableCell>{latestDocument.name}</TableCell>
+                  <TableCell>
+                    <Badge variant="success">Imported</Badge>
+                  </TableCell>
+                  <TableCell>{latestDocument._count?.lines ?? 0} {t('lines')}</TableCell>
+                  <TableCell className="text-right">{formatDate(latestDocument.createdAt)}</TableCell>
+                </TableRow>
+              ) : null}
+              {openRequests.slice(0, 2).map((request) => (
+                <TableRow key={request.id}>
+                  <TableCell className="font-medium">Request</TableCell>
+                  <TableCell>{request.purpose || request.materialId}</TableCell>
+                  <TableCell>
+                    <Badge variant="warning">{enumLabel(request.status, language)}</Badge>
+                  </TableCell>
+                  <TableCell>{formatNumber(request.quantity)} requested</TableCell>
+                  <TableCell className="text-right">{request.requestedByUser?.fullName || request.requestedBy}</TableCell>
+                </TableRow>
+              ))}
+              {lowStockItems.slice(0, 2).map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell className="font-medium">Warehouse</TableCell>
+                  <TableCell>{item.material?.name || item.materialId}</TableCell>
+                  <TableCell>
+                    <Badge variant={item.status === 'OUT' ? 'danger' : 'warning'}>
+                      {enumLabel(item.status || 'NORMAL', language)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>Balance {formatNumber(item.currentBalance)}</TableCell>
+                  <TableCell className="text-right">-</TableCell>
+                </TableRow>
+              ))}
+              {latestDocument === null && openRequests.length === 0 && lowStockItems.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                    No operational items yet.
+                  </TableCell>
+                </TableRow>
+              ) : null}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
+
+      {loading ? (
+        <div className="rounded-xl border bg-muted/20 px-6 py-8 text-sm text-muted-foreground">
+          {t('Loading dashboard...')}
+        </div>
+      ) : null}
     </div>
   );
 }

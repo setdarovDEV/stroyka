@@ -72,10 +72,7 @@ export function UsersPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">{t('Users')}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{t('Manage system users and roles')}</p>
-        </div>
+        <p className="text-sm text-muted-foreground">{t('Manage system users and roles')}</p>
         <Button onClick={() => setShowCreate(true)}>
           <UserPlus className="w-4 h-4 mr-2" /> {t('Add User')}
         </Button>

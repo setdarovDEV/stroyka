@@ -94,10 +94,7 @@ export function BrigadesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">{t('Brigades & Machines')}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{t('Worker teams, work logs, machines, and machine logs')}</p>
-        </div>
+        <p className="text-sm text-muted-foreground">{t('Worker teams, work logs, machines, and machine logs')}</p>
         <div className="flex gap-2">
           <Button variant="secondary" size="sm" onClick={() => setShowBrigadeForm(true)}><Plus className="w-4 h-4 mr-1" /> {t('Brigade')}</Button>
           <Button variant="secondary" size="sm" onClick={() => setShowWorkLogForm(true)}><Plus className="w-4 h-4 mr-1" /> {t('Work Log')}</Button>

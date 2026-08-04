@@ -59,12 +59,7 @@ export function AlertsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">{t('Alerts')}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{t('Monitor and manage system warnings')}</p>
-        </div>
-      </div>
+      <p className="text-sm text-muted-foreground">{t('Monitor and manage system warnings')}</p>
 
       <div className="flex gap-4">
         <Select value={filterSeverity} onChange={(e) => { setFilterSeverity(e.target.value); setPage(1); }}>
@@ -84,10 +79,13 @@ export function AlertsPage() {
 
       <div className="space-y-3">
         {alerts.map((a) => (
-          <Card key={a.id} className={cn(
-            'border-l-4',
-            a.severity === 'CRITICAL' ? 'border-l-red-500' : a.severity === 'WARNING' ? 'border-l-amber-500' : 'border-l-blue-500'
-          )}>
+          <Card
+            key={a.id}
+            className={cn(
+              'transition-colors',
+              a.status === 'RESOLVED' ? 'opacity-80' : 'hover:border-primary/30',
+            )}
+          >
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">

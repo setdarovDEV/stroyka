@@ -60,12 +60,9 @@ export function ProjectsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">{t('Projects')}</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {currentProject ? `${t('Current')}: ${currentProject.name}` : t('No project selected')}
-          </p>
-        </div>
+        <p className="text-sm text-muted-foreground">
+          {currentProject ? `${t('Current')}: ${currentProject.name}` : t('No project selected')}
+        </p>
         {isAdmin && (
           <Button onClick={() => setShowCreate(true)}>
             <FolderPlus className="w-4 h-4 mr-2" /> {t('New Project')}

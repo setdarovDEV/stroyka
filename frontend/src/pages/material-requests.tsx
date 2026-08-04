@@ -70,10 +70,7 @@ export function MaterialRequestsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">{t('Material Requests')}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{t('Request materials from warehouse')}</p>
-        </div>
+        <p className="text-sm text-muted-foreground">{t('Request materials from warehouse')}</p>
         <Button onClick={() => setShowCreate(true)}>
           <Plus className="w-4 h-4 mr-2" /> {t('New Request')}
         </Button>

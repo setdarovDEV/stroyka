@@ -52,13 +52,13 @@ export function LoginPage() {
               STROYK<span className="text-primary">A</span>
             </h1>
             <p className="text-lg text-muted-foreground max-w-sm mx-auto leading-relaxed">
-              {t('Construction control system. Compare estimates against real execution — materials, warehouse, brigades, machines, and reports.')}
+              Plan smeta, control warehouse movement, and close every month with M-29-ready reporting.
             </p>
           </div>
           <div className="grid grid-cols-3 gap-3 border-t pt-6 text-left">
             <div>
               <p className="text-xs text-muted-foreground">{t('Scope')}</p>
-              <p className="text-sm font-medium">{t('Projects')}</p>
+              <p className="text-sm font-medium">Smeta</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">{t('Control')}</p>
@@ -66,7 +66,7 @@ export function LoginPage() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground">{t('Output')}</p>
-              <p className="text-sm font-medium">{t('Reports')}</p>
+              <p className="text-sm font-medium">M-29</p>
             </div>
           </div>
         </div>
@@ -84,7 +84,7 @@ export function LoginPage() {
               {t('Welcome back')}
             </CardTitle>
             <CardDescription className="text-sm">
-              {t('Sign in to your construction control dashboard')}
+              Sign in to continue the project workflow
             </CardDescription>
           </CardHeader>
 
