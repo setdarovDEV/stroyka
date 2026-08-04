@@ -1,7 +1,10 @@
 import { NavLink, useLocation } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { useApp } from '@/app/context';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { Select } from '@/components/ui/select';
+import { api } from '@/services/api';
 import {
   Sidebar as SidebarPanel,
   SidebarContent,
@@ -18,44 +21,48 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 import {
-  LayoutDashboard,
   FileText,
   Box,
-  Users,
-  BarChart3,
-  FolderKanban,
-  ShieldCheck,
-  Bell,
-  Settings,
   LogOut,
-  Layers,
-  PackageCheck,
+  ScrollText,
 } from 'lucide-react';
 import { roleLabel } from '@/lib/i18n';
+import type { Paginated, Project } from '@/api/types';
 
 const mainNavItems = [
-  { to: '/app/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/app/projects', label: 'Projects', icon: FolderKanban },
-  { to: '/app/estimate', label: 'Estimate', icon: FileText },
-  { to: '/app/warehouse', label: 'Warehouse', icon: Box },
-  { to: '/app/material-requests', label: 'Material Requests', icon: PackageCheck },
-  { to: '/app/brigades', label: 'Brigades', icon: Users },
-  { to: '/app/zones', label: 'Zones', icon: Layers },
-  { to: '/app/reports', label: 'Reports', icon: BarChart3 },
-  { to: '/app/alerts', label: 'Alerts', icon: Bell },
-];
-
-const adminNavItems = [
-  { to: '/app/users', label: 'Users', icon: ShieldCheck },
-  { to: '/app/settings', label: 'Settings', icon: Settings },
+  { to: '/app/smeta', label: 'Smeta Uploading', icon: FileText },
+  { to: '/app/warehouse', label: 'Warehouse / Inventory', icon: Box },
+  { to: '/app/m29', label: 'M29 Management', icon: ScrollText },
 ];
 
 export function Sidebar() {
-  const { user, logout, language, t } = useApp();
+  const { user, logout, language, t, currentProject, setCurrentProject } = useApp();
   const { state } = useSidebar();
   const location = useLocation();
-  const isAdmin = user?.role === 'ADMIN';
   const collapsed = state === 'collapsed';
+  const [projects, setProjects] = useState<Project[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    api.get<Paginated<Project>>('/projects?page=1&limit=100')
+      .then((response) => {
+        if (cancelled) return;
+        const loadedProjects = response.items || [];
+        setProjects(loadedProjects);
+
+        if (!currentProject && loadedProjects.length > 0) {
+          setCurrentProject(loadedProjects[0]);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setProjects([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentProject, setCurrentProject]);
 
   return (
     <SidebarPanel collapsible="icon">
@@ -74,6 +81,26 @@ export function Sidebar() {
       </SidebarHeader>
       <SidebarTrigger className="absolute right-0 top-6 z-20 h-7 w-7 translate-x-1/2 border bg-card shadow-none" />
       <Separator />
+      {!collapsed && (
+        <div className="px-3 py-3">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('Project')}</p>
+          <Select
+            value={currentProject?.id || ''}
+            onChange={(event) => {
+              const project = projects.find((item) => item.id === event.target.value) || null;
+              setCurrentProject(project);
+            }}
+          >
+            <option value="">{t('Select project')}</option>
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
+      {!collapsed && <Separator />}
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>{t('Application')}</SidebarGroupLabel>
@@ -94,27 +121,6 @@ export function Sidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-        {isAdmin && (
-          <SidebarGroup>
-            <SidebarGroupLabel>{t('Admin')}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {adminNavItems.map((item) => (
-                  <SidebarMenuItem key={item.to}>
-                    <SidebarMenuButton asChild isActive={location.pathname === item.to} title={t(item.label)}>
-                      <NavLink to={item.to}>
-                        <item.icon className="h-5 w-5 shrink-0" />
-                        <span className="truncate group-data-[state=collapsed]/sidebar:hidden">
-                          {t(item.label)}
-                        </span>
-                      </NavLink>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
       </SidebarContent>
       <SidebarFooter>
         <div className="mb-3 px-1 group-data-[state=collapsed]/sidebar:hidden">

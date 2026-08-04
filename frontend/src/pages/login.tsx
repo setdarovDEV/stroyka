@@ -25,7 +25,7 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
 
   if (user) {
-    return <Navigate to="/app/dashboard" replace />;
+    return <Navigate to="/app/smeta" replace />;
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -52,13 +52,13 @@ export function LoginPage() {
               STROYK<span className="text-primary">A</span>
             </h1>
             <p className="text-lg text-muted-foreground max-w-sm mx-auto leading-relaxed">
-              {t('Construction control system. Compare estimates against real execution — materials, warehouse, brigades, machines, and reports.')}
+              {t('Construction control system. Focused on smeta uploading, warehouse inventory, and M29 management.')}
             </p>
           </div>
           <div className="grid grid-cols-3 gap-3 border-t pt-6 text-left">
             <div>
               <p className="text-xs text-muted-foreground">{t('Scope')}</p>
-              <p className="text-sm font-medium">{t('Projects')}</p>
+              <p className="text-sm font-medium">{t('Smeta Uploading')}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">{t('Control')}</p>
@@ -66,7 +66,7 @@ export function LoginPage() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground">{t('Output')}</p>
-              <p className="text-sm font-medium">{t('Reports')}</p>
+              <p className="text-sm font-medium">{t('M29 Management')}</p>
             </div>
           </div>
         </div>
@@ -84,7 +84,7 @@ export function LoginPage() {
               {t('Welcome back')}
             </CardTitle>
             <CardDescription className="text-sm">
-              {t('Sign in to your construction control dashboard')}
+              {t('Sign in to your construction control workspace')}
             </CardDescription>
           </CardHeader>
 

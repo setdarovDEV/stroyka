@@ -7,17 +7,9 @@ import { ProtectedRoute } from '@/components/layout/protected-route';
 import { AppLayout } from '@/components/layout/app-layout';
 import { LoginPage } from '@/pages/login';
 import { RegisterPage } from '@/pages/register';
-import { DashboardPage } from '@/pages/dashboard';
-import { EstimatePage } from '@/pages/estimate';
+import { SmetaPage } from '@/pages/smeta';
 import { WarehousePage } from '@/pages/warehouse';
-import { BrigadesPage } from '@/pages/brigades';
-import { ReportsPage } from '@/pages/reports';
-import { UsersPage } from '@/pages/users';
-import { ProjectsPage } from '@/pages/projects';
-import { AlertsPage } from '@/pages/alerts';
-import { SettingsPage } from '@/pages/settings';
-import { MaterialRequestsPage } from '@/pages/material-requests';
-import { ZonesPage } from '@/pages/zones';
+import { M29Page } from '@/pages/m29';
 
 ReactDOM.createRoot(document.getElementById('app')!).render(
   <React.StrictMode>
@@ -28,18 +20,10 @@ ReactDOM.createRoot(document.getElementById('app')!).render(
           <Route path="/register" element={<RegisterPage />} />
           <Route element={<ProtectedRoute />}>
             <Route path="/app" element={<AppLayout />}>
-              <Route index element={<Navigate to="dashboard" replace />} />
-              <Route path="dashboard" element={<DashboardPage />} />
-              <Route path="estimate" element={<EstimatePage />} />
+              <Route index element={<Navigate to="smeta" replace />} />
+              <Route path="smeta" element={<SmetaPage />} />
               <Route path="warehouse" element={<WarehousePage />} />
-              <Route path="brigades" element={<BrigadesPage />} />
-              <Route path="reports" element={<ReportsPage />} />
-              <Route path="projects" element={<ProjectsPage />} />
-              <Route path="users" element={<UsersPage />} />
-              <Route path="alerts" element={<AlertsPage />} />
-              <Route path="settings" element={<SettingsPage />} />
-              <Route path="material-requests" element={<MaterialRequestsPage />} />
-              <Route path="zones" element={<ZonesPage />} />
+              <Route path="m29" element={<M29Page />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/app" replace />} />

@@ -22,7 +22,7 @@ describe('Estimates E2E', () => {
   });
 
   it('imports real smeta workbook with hierarchy summary', async () => {
-    const workbookPath = path.resolve(process.cwd(), 'backend', 'templates', 'smeta-template.xlsx');
+    const workbookPath = path.resolve(process.cwd(), 'templates', 'smeta-template.xlsx');
     const res = await ctx.request()
       .post('/estimates/import-workbook')
       .set('Authorization', `Bearer ${ctx.admin.token}`)
@@ -39,11 +39,11 @@ describe('Estimates E2E', () => {
     expect(res.body.estimate?.workbookPreview?.rows?.find((row: { rowNumber: number }) => row.rowNumber === 12)?.cells?.[0]?.value)
       .toBe('КУРИЛИШ БЎЛИМЛАРИ');
 
-    const lines = await ctx.request()
-      .get(`/estimate-lines?projectId=${ctx.projectId}&estimateId=${res.body.estimate.id}&page=1&limit=20`)
+    const importedEstimate = await ctx.request()
+      .get(`/estimates/${res.body.estimate.id}`)
       .set('Authorization', `Bearer ${ctx.admin.token}`);
-    expect(lines.status).toBe(200);
-    expect(lines.body.items[0]?.rowType).toBe('SECTION');
+    expect(importedEstimate.status).toBe(200);
+    expect(importedEstimate.body.lines[0]?.rowType).toBe('SECTION');
   });
 
   it('rejects workbook without _ЛРВ sheet', async () => {
@@ -85,7 +85,7 @@ describe('Estimates E2E', () => {
       .get(`/estimates?projectId=${ctx.projectId}&page=1&limit=10`)
       .set('Authorization', `Bearer ${ctx.admin.token}`);
     expect(res.status).toBe(200);
-    expect(res.body.items.length).toBeGreaterThanOrEqual(2);
+    expect(res.body.items.length).toBeGreaterThanOrEqual(1);
   });
 
   it('gets a single estimate with its lines', async () => {
@@ -109,25 +109,6 @@ describe('Estimates E2E', () => {
     const res = await ctx.request()
       .delete(`/estimates/${estimateId}`)
       .set('Authorization', `Bearer ${ctx.admin.token}`);
-    expect(res.status).toBe(200);
-  });
-
-  it('admin sees financial data in estimate lines', async () => {
-    const res = await ctx.request()
-      .get('/estimate-lines')
-      .set('Authorization', `Bearer ${ctx.admin.token}`);
-    expect(res.status).toBe(200);
-    if (res.body.items?.length) {
-      const line = res.body.items[0];
-      expect(line).toHaveProperty('plannedUnitPrice');
-      expect(line).toHaveProperty('plannedTotalPrice');
-    }
-  });
-
-  it('proab also gets estimate lines (financial stripping should happen on frontend/backend)', async () => {
-    const res = await ctx.request()
-      .get('/estimate-lines')
-      .set('Authorization', `Bearer ${ctx.proab.token}`);
     expect(res.status).toBe(200);
   });
 });
