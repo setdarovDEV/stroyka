@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
-import { AuthUser } from '../common/tenant-access.service';
+import type { AuthUser } from '../common/tenant-access.service';
 import * as bcrypt from 'bcryptjs';
 
 @Injectable()

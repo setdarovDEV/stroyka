@@ -2,7 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEstimateLineDto, UpdateEstimateLineDto, QueryEstimateLineDto } from './dto/estimate-line.dto';
-import { AuthUser, TenantAccessService } from '../common/tenant-access.service';
+import { TenantAccessService } from '../common/tenant-access.service';
+import type { AuthUser } from '../common/tenant-access.service';
 
 type FinancialFields = {
   plannedUnitPrice?: unknown;

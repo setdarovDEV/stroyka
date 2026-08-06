@@ -1,7 +1,8 @@
 import { Injectable, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProjectDto, UpdateProjectDto } from './dto/project.dto';
-import { AuthUser, TenantAccessService } from '../common/tenant-access.service';
+import { TenantAccessService } from '../common/tenant-access.service';
+import type { AuthUser } from '../common/tenant-access.service';
 
 @Injectable()
 export class ProjectsService {

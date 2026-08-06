@@ -3,6 +3,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'sonner';
 import { AppProvider } from './context';
 import { ProtectedRoute } from '@/components/layout/protected-route';
 import { AppLayout } from '@/components/layout/app-layout';
@@ -27,6 +28,7 @@ ReactDOM.createRoot(document.getElementById('app')!).render(
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AppProvider>
+          <Toaster richColors position="top-right" />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />

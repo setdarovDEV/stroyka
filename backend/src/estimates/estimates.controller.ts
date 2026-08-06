@@ -3,7 +3,8 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { EstimatesService } from './estimates.service';
 import { CreateEstimateDto, ImportEstimateDto, ImportEstimateWorkbookDto } from './dto/estimate.dto';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { AuthUser, TenantAccessService } from '../common/tenant-access.service';
+import { TenantAccessService } from '../common/tenant-access.service';
+import type { AuthUser } from '../common/tenant-access.service';
 import type { Response } from 'express';
 import { randomUUID } from 'crypto';
 import { SmetaQueueService } from './smeta-queue.service';
@@ -85,8 +86,12 @@ export class EstimatesController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    return this.estimatesService.findOne(id, user);
+  findOne(
+    @Param('id') id: string,
+    @Query('includeLines') includeLines: string | undefined,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.estimatesService.findOne(id, user, includeLines === 'true');
   }
 
   @Put(':id')

@@ -386,6 +386,11 @@ export function DashboardPage() {
       return;
     }
 
+    if (importStatus.status === 'PARSED') {
+      dispatch({ type: 'setStatusMessage', value: t('Excel parsed. Importing lines into database...') });
+      return;
+    }
+
     dispatch({ type: 'setStatusMessage', value: t('Excel import in progress...') });
   }, [importStatusQuery.data, projectId, queryClient, t, uiState.importJobId]);
 

@@ -231,14 +231,16 @@ export type EstimateImportSummary = {
 export type EstimateWorkbookImportResult = {
   jobId: string;
   estimateId: string;
-  status: 'QUEUED' | 'PARSING' | 'STORING' | 'COMPLETED' | 'FAILED';
+  status: 'QUEUED' | 'PARSING' | 'PARSED' | 'STORING' | 'COMPLETED' | 'FAILED';
 };
 
 export type EstimateWorkbookImportStatus = {
-  status: 'QUEUED' | 'PARSING' | 'STORING' | 'COMPLETED' | 'FAILED';
+  status: 'QUEUED' | 'PARSING' | 'PARSED' | 'STORING' | 'COMPLETED' | 'FAILED';
   progress: number;
   estimateId?: string;
   summary?: EstimateImportSummary;
+  stagedLines?: EstimateLine[];
+  stagedTotal?: number;
   error?: string;
 };
 

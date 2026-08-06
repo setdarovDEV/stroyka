@@ -7,6 +7,7 @@ import {
   SmetaJobResult,
   SmetaJobStatus,
 } from './smeta-queue.constants';
+import { SmetaJobStateStore } from './smeta-job-state.store';
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 
@@ -14,6 +15,7 @@ const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 export class SmetaQueueService implements OnModuleDestroy {
   private connection: IORedis;
   private queue: Queue<SmetaJobData, SmetaJobResult>;
+  private stateStore: SmetaJobStateStore;
 
   constructor() {
     this.connection = new IORedis(REDIS_URL, {
@@ -29,11 +31,17 @@ export class SmetaQueueService implements OnModuleDestroy {
         removeOnFail: { age: 86400, count: 500 },
       },
     });
+    this.stateStore = new SmetaJobStateStore();
   }
 
   async enqueue(data: SmetaJobData) {
     const job = await this.queue.add('parse-workbook', data, {
       jobId: data.estimateId,
+    });
+    await this.stateStore.save(String(job.id), {
+      status: SmetaJobStatus.QUEUED,
+      progress: 0,
+      estimateId: data.estimateId,
     });
     return job.id!;
   }
@@ -48,13 +56,15 @@ export class SmetaQueueService implements OnModuleDestroy {
     const progress = job.progress as number ?? 0;
     const result = job.returnvalue as SmetaJobResult | undefined;
     const failedReason = job.failedReason;
+    const stagedState = await this.stateStore.get(jobId);
 
     if (state === 'completed' && result) {
       return { ...result, progress: 100 };
     }
     if (state === 'failed') {
-      return { status: SmetaJobStatus.FAILED, progress, error: failedReason || 'Unknown error' };
+      return stagedState ?? { status: SmetaJobStatus.FAILED, progress, error: failedReason || 'Unknown error' };
     }
+    if (stagedState) return stagedState;
 
     const statusMap: Record<string, SmetaJobStatus> = {
       waiting: SmetaJobStatus.QUEUED,
@@ -71,5 +81,6 @@ export class SmetaQueueService implements OnModuleDestroy {
   async onModuleDestroy() {
     await this.queue.close();
     await this.connection.quit();
+    await this.stateStore.onModuleDestroy();
   }
 }

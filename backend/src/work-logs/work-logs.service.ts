@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateWorkLogDto, QueryDto } from './dto/work-log.dto';
-import { AuthUser, TenantAccessService } from '../common/tenant-access.service';
+import { TenantAccessService } from '../common/tenant-access.service';
+import type { AuthUser } from '../common/tenant-access.service';
 
 @Injectable()
 export class WorkLogsService {

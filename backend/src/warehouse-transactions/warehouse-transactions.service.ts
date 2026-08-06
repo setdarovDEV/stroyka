@@ -7,7 +7,8 @@ import {
   ConfirmTransactionDto,
   QueryDto,
 } from './dto/transaction.dto';
-import { AuthUser, TenantAccessService } from '../common/tenant-access.service';
+import { TenantAccessService } from '../common/tenant-access.service';
+import type { AuthUser } from '../common/tenant-access.service';
 
 @Injectable()
 export class WarehouseTransactionsService {

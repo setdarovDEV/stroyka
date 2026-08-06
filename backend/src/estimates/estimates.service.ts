@@ -3,7 +3,8 @@ import { EstimateLineItemType, EstimateLineRowType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { CreateEstimateDto, ImportEstimateDto, ImportEstimateWorkbookDto } from './dto/estimate.dto';
-import { AuthUser, TenantAccessService } from '../common/tenant-access.service';
+import { TenantAccessService } from '../common/tenant-access.service';
+import type { AuthUser } from '../common/tenant-access.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
@@ -278,16 +279,20 @@ export class EstimatesService {
     return { items, total, page, limit, pages: Math.ceil(total / limit) };
   }
 
-  async findOne(id: string, user: AuthUser) {
+  async findOne(id: string, user: AuthUser, includeLines = false) {
     const estimate = await this.prisma.estimate.findFirst({
       where: { id, ...this.access.projectWhere(user) },
-      include: { lines: true },
+      include: includeLines ? { lines: true } : undefined,
     });
     if (!estimate) throw new NotFoundException('Estimate not found');
-    return {
+    const base = {
       ...estimate,
       workbookPreview: stripWorkbookPreviewFinancial(estimate.workbookPreviewJson, user),
-      lines: stripFinancialFromLines(estimate.lines, user),
+    };
+    if (!includeLines) return base;
+    return {
+      ...base,
+      lines: stripFinancialFromLines((estimate as typeof estimate & { lines: FinancialFields[] }).lines, user),
     };
   }
 

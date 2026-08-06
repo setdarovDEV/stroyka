@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { AgGridReact } from 'ag-grid-react';
 import { themeQuartz } from 'ag-grid-community';
 import type { ColDef } from 'ag-grid-community';
+import { toast } from 'sonner';
 import { useApp } from '@/app/context';
 import { api } from '@/services/api';
 import { Button } from '@/components/ui/button';
@@ -12,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ArrowRight, CheckCircle2, ClipboardCheck, FileSpreadsheet, Upload, Warehouse } from 'lucide-react';
 import { errorMessage } from '@/services/api';
-import type { EstimateLine, Paginated } from '@/api/types';
+import type { EstimateLine, EstimateWorkbookImportStatus, Paginated } from '@/api/types';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-quartz.css';
 
@@ -24,6 +26,11 @@ export function EstimatePage() {
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState('lines');
+  const [stagedLines, setStagedLines] = useState<EstimateLine[]>([]);
+  const [stagedTotal, setStagedTotal] = useState(0);
+  const [activeImportJobId, setActiveImportJobId] = useState<string | null>(null);
+  const [activeImportEstimateId, setActiveImportEstimateId] = useState<string | null>(null);
+  const toastIdRef = useRef<string | number | null>(null);
 
   const [estName, setEstName] = useState('');
   const [excelFile, setExcelFile] = useState<File | null>(null);
@@ -31,6 +38,7 @@ export function EstimatePage() {
 
   const isAdmin = user?.role === 'ADMIN';
   const projectId = currentProject?.id;
+  const usingStagedLines = stagedLines.length > 0 && activeImportJobId !== null;
 
   const loadLines = useCallback(async () => {
     if (!projectId) { setLoading(false); return; }
@@ -47,6 +55,86 @@ export function EstimatePage() {
 
   useEffect(() => { loadLines(); }, [loadLines]);
 
+  const importStatusQuery = useQuery({
+    queryKey: ['estimate-import-status', activeImportJobId],
+    queryFn: () => api.get<EstimateWorkbookImportStatus>(`/estimates/import-status/${activeImportJobId!}`),
+    enabled: Boolean(activeImportJobId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === 'COMPLETED' || status === 'FAILED' ? false : 1200;
+    },
+  });
+
+  useEffect(() => {
+    const status = importStatusQuery.data;
+    if (!status || !activeImportJobId) return;
+
+    if (status.status === 'QUEUED' || status.status === 'PARSING') {
+      if (!toastIdRef.current) {
+        toastIdRef.current = toast.loading(t('Excel import in progress...'));
+      } else {
+        toast.loading(t('Excel import in progress...'), { id: toastIdRef.current });
+      }
+      return;
+    }
+
+    if (status.status === 'PARSED') {
+      setStagedLines(status.stagedLines ?? []);
+      setStagedTotal(status.stagedTotal ?? status.stagedLines?.length ?? 0);
+      setActiveImportEstimateId(status.estimateId ?? null);
+      setPage(1);
+      setTab('lines');
+      if (!toastIdRef.current) {
+        toastIdRef.current = toast.loading(t('Excel parsed. Importing lines into database...'));
+      } else {
+        toast.loading(t('Excel parsed. Importing lines into database...'), { id: toastIdRef.current });
+      }
+      return;
+    }
+
+    if (status.status === 'STORING') {
+      if (status.stagedLines?.length) {
+        setStagedLines(status.stagedLines);
+        setStagedTotal(status.stagedTotal ?? status.stagedLines.length);
+      }
+      if (!toastIdRef.current) {
+        toastIdRef.current = toast.loading(t('Excel parsed. Importing lines into database...'));
+      } else {
+        toast.loading(t('Excel parsed. Importing lines into database...'), { id: toastIdRef.current });
+      }
+      return;
+    }
+
+    if (status.status === 'COMPLETED') {
+      setActiveImportJobId(null);
+      setActiveImportEstimateId(null);
+      setStagedLines([]);
+      setStagedTotal(0);
+      void loadLines();
+      if (toastIdRef.current) {
+        toast.success(t('Import successful'), { id: toastIdRef.current });
+        toastIdRef.current = null;
+      } else {
+        toast.success(t('Import successful'));
+      }
+      setImportResult(`${t('Imported')} ${status.summary?.workRowsCount ?? 0} ${t('work rows')}, ${status.summary?.resourceRowsCount ?? 0} ${t('resource rows')}`);
+      return;
+    }
+
+    setActiveImportJobId(null);
+    setActiveImportEstimateId(null);
+    setStagedLines([]);
+    setStagedTotal(0);
+    const message = `${t('Excel import failed')}: ${status.error || t('Unknown error')}`;
+    setImportResult(message);
+    if (toastIdRef.current) {
+      toast.error(message, { id: toastIdRef.current });
+      toastIdRef.current = null;
+    } else {
+      toast.error(message);
+    }
+  }, [activeImportJobId, importStatusQuery.data, loadLines, t]);
+
   async function handleImportExcel() {
     if (!excelFile || !estName || !projectId) return;
     setImportResult(t('Processing...'));
@@ -55,15 +143,21 @@ export function EstimatePage() {
       formData.set('projectId', projectId);
       formData.set('name', estName);
       formData.set('file', excelFile);
-      const result = await api.postForm<{ summary?: { workRowsCount?: number; resourceRowsCount?: number } }>('/estimates/import-workbook', formData);
+      const result = await api.postForm<{ jobId: string; estimateId: string }>('/estimates/import-workbook', formData);
       setEstName('');
       setExcelFile(null);
-      setImportResult(`${t('Imported')} ${result.summary?.workRowsCount ?? 0} ${t('work rows')}, ${result.summary?.resourceRowsCount ?? 0} ${t('resource rows')}`);
-      loadLines();
+      setStagedLines([]);
+      setStagedTotal(0);
+      setActiveImportEstimateId(result.estimateId);
+      setActiveImportJobId(result.jobId);
+      setImportResult(t('Excel import queued. Processing in background...'));
+      setTab('lines');
     } catch (e: unknown) { setImportResult(`${t('Excel import failed')}: ${errorMessage(e, t('Unknown error'))}`); }
   }
 
-  const filtered = lines.filter((l) =>
+  const visibleLines = usingStagedLines ? stagedLines : lines;
+
+  const filtered = visibleLines.filter((l) =>
     !search || l.name?.toLowerCase().includes(search.toLowerCase()) || l.code?.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -198,7 +292,11 @@ export function EstimatePage() {
             <div className="p-4">
               <div className="mb-3 flex items-center justify-between gap-3 text-sm text-muted-foreground">
                 <span>Drag any column edge to resize.</span>
-                <span>{filtered.length} visible rows</span>
+                <div className="flex items-center gap-2">
+                  {usingStagedLines ? <Badge variant="warning">Pending import</Badge> : null}
+                  {usingStagedLines ? <Badge variant="outline">Preview</Badge> : null}
+                  <span>{filtered.length} visible rows</span>
+                </div>
               </div>
               <div className="ag-theme-quartz-dark overflow-hidden rounded-lg border" style={{ height: 640 }}>
                 <AgGridReact<EstimateLine>
@@ -217,12 +315,17 @@ export function EstimatePage() {
               </div>
             </div>
             <div className="flex items-center justify-between p-4 border-t border-border text-sm text-muted-foreground">
-              <span>{t('Page')} {page} {t('of')} {Math.ceil(total / 20) || 1}</span>
+              <span>{t('Page')} {page} {t('of')} {Math.ceil((usingStagedLines ? stagedTotal : total) / 20) || 1}</span>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>{t('Prev')}</Button>
-                <Button variant="outline" size="sm" disabled={page * 20 >= total} onClick={() => setPage(p => p + 1)}>{t('Next')}</Button>
+                <Button variant="outline" size="sm" disabled={usingStagedLines || page <= 1} onClick={() => setPage(p => p - 1)}>{t('Prev')}</Button>
+                <Button variant="outline" size="sm" disabled={usingStagedLines || page * 20 >= total} onClick={() => setPage(p => p + 1)}>{t('Next')}</Button>
               </div>
             </div>
+            {usingStagedLines ? (
+              <div className="border-t border-border px-4 py-3 text-sm text-muted-foreground">
+                Previewing first {stagedLines.length} of {stagedTotal} parsed rows for estimate {activeImportEstimateId?.slice(0, 8) ?? '-'} while database insert finishes.
+              </div>
+            ) : null}
           </Card>
         </TabsContent>
 
