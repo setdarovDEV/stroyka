@@ -15,7 +15,7 @@ export interface TestUser {
   id: string;
   username: string;
   password: string;
-  role: 'ADMIN' | 'PROAB';
+  role: 'ADMIN' | 'PRORAB';
   token: string;
 }
 
@@ -24,7 +24,7 @@ export interface TestContext {
   prisma: PrismaService;
   request: () => SuperTest<Test>;
   admin: TestUser;
-  proab: TestUser;
+  prorab: TestUser;
   projectId: string;
   unitId: string;
   materialId: string;
@@ -38,11 +38,11 @@ const adminUser: TestUser = {
   token: '',
 };
 
-const proabUser: TestUser = {
+const prorabUser: TestUser = {
   id: '',
-  username: 'e2e-proab',
-  password: 'proab123',
-  role: 'PROAB',
+  username: 'e2e-prorab',
+  password: 'prorab123',
+  role: 'PRORAB',
   token: '',
 };
 
@@ -70,11 +70,11 @@ export async function setupE2E(): Promise<TestContext> {
   });
   adminUser.id = admin.id;
 
-  const proabHash = await bcrypt.hash(proabUser.password, 10);
-  const proab = await prisma.user.create({
-    data: { tenantId: tenant.id, fullName: 'E2E Prorab', username: proabUser.username, passwordHash: proabHash, role: Role.PROAB },
+  const prorabHash = await bcrypt.hash(prorabUser.password, 10);
+  const prorab = await prisma.user.create({
+    data: { tenantId: tenant.id, fullName: 'E2E Prorab', username: prorabUser.username, passwordHash: prorabHash, role: Role.PRORAB },
   });
-  proabUser.id = proab.id;
+  prorabUser.id = prorab.id;
 
   const project = await prisma.project.create({
     data: { tenantId: tenant.id, name: 'E2E Test Project', address: 'Test Street 1', clientName: 'Test Client', status: ProjectStatus.ACTIVE },
@@ -83,7 +83,7 @@ export async function setupE2E(): Promise<TestContext> {
   await prisma.projectUserAssignment.createMany({
     data: [
       { projectId: project.id, userId: admin.id, role: Role.ADMIN },
-      { projectId: project.id, userId: proab.id, role: Role.PROAB },
+      { projectId: project.id, userId: prorab.id, role: Role.PRORAB },
     ],
   });
 
@@ -93,12 +93,12 @@ export async function setupE2E(): Promise<TestContext> {
   const adminRes = await request(httpServer).post('/auth/login').send({ username: adminUser.username, password: adminUser.password });
   adminUser.token = adminRes.body.token;
 
-  const proabRes = await request(httpServer).post('/auth/login').send({ username: proabUser.username, password: proabUser.password });
-  proabUser.token = proabRes.body.token;
+  const prorabRes = await request(httpServer).post('/auth/login').send({ username: prorabUser.username, password: prorabUser.password });
+  prorabUser.token = prorabRes.body.token;
 
   const req = () => request(httpServer);
 
-  return { app, prisma, request: req, admin: adminUser, proab: proabUser, projectId: project.id, unitId: unit.id, materialId: material.id };
+  return { app, prisma, request: req, admin: adminUser, prorab: prorabUser, projectId: project.id, unitId: unit.id, materialId: material.id };
 }
 
 export async function teardownE2E(): Promise<void> {

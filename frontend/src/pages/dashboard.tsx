@@ -1,11 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useReducer } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
-  AlertTriangle,
   ArrowRight,
-  Bell,
-  Boxes,
-  CheckCircle2,
   ClipboardCheck,
   Download,
   FileSpreadsheet,
@@ -23,16 +20,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type {
   Alert,
   Estimate,
   EstimateImportSummary,
+  EstimateWorkbookImportStatus,
   EstimateWorkbookImportResult,
   MaterialRequest,
   Paginated,
   WarehouseItem,
+  WorkbookPreview,
+  WorkbookPreviewCellStyle,
 } from '@/api/types';
 
 function formatDate(value?: string | null) {
@@ -45,8 +43,39 @@ function formatNumber(value?: number | null) {
   return (value ?? 0).toLocaleString();
 }
 
-function formatStatus(status?: string | null) {
-  return status ? status.replace(/_/g, ' ') : '-';
+function argbToCssColor(value?: string | null, fallback = '#ffffff') {
+  if (!value) return fallback;
+  const normalized = value.trim();
+  if (normalized.length === 8) return `#${normalized.slice(2)}`;
+  if (normalized.length === 6) return `#${normalized}`;
+  return fallback;
+}
+
+function previewCellStyle(style?: WorkbookPreviewCellStyle): React.CSSProperties {
+  return {
+    backgroundColor: argbToCssColor(style?.backgroundColor),
+    color: argbToCssColor(style?.color, '#000000'),
+    fontWeight: style?.bold ? 700 : 400,
+    fontStyle: style?.italic ? 'italic' : 'normal',
+    fontSize: style?.fontSize ? `${style.fontSize}px` : undefined,
+    textAlign:
+      style?.horizontalAlign === 'center'
+        ? 'center'
+        : style?.horizontalAlign === 'right'
+          ? 'right'
+          : 'left',
+    verticalAlign:
+      style?.verticalAlign === 'middle'
+        ? 'middle'
+        : style?.verticalAlign === 'bottom'
+          ? 'bottom'
+          : 'top',
+    whiteSpace: style?.wrapText ? 'pre-wrap' : 'pre',
+    borderTop: style?.borderTop ? '1px solid rgba(148, 163, 184, 0.35)' : '1px solid rgba(148, 163, 184, 0.12)',
+    borderRight: style?.borderRight ? '1px solid rgba(148, 163, 184, 0.35)' : '1px solid rgba(148, 163, 184, 0.12)',
+    borderBottom: style?.borderBottom ? '1px solid rgba(148, 163, 184, 0.35)' : '1px solid rgba(148, 163, 184, 0.12)',
+    borderLeft: style?.borderLeft ? '1px solid rgba(148, 163, 184, 0.35)' : '1px solid rgba(148, 163, 184, 0.12)',
+  };
 }
 
 function ActionTile({
@@ -141,8 +170,7 @@ function WorkflowStage({
   children?: React.ReactNode;
 }) {
   return (
-    <Card>
-      <CardContent className="p-5">
+    <div className="rounded-xl border p-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-3">
@@ -182,109 +210,233 @@ function WorkflowStage({
           {children}
         </>
       ) : null}
-      </CardContent>
-    </Card>
+    </div>
   );
+}
+
+function WorkbookPreviewTable({ preview }: { preview: WorkbookPreview }) {
+  return (
+    <div className="overflow-auto rounded-xl border bg-[#0a1220]" style={{ contentVisibility: 'auto', containIntrinsicSize: '1000px' }}>
+      <table className="w-max min-w-full border-collapse text-[12px] leading-5 text-slate-100">
+        <colgroup>
+          {preview.columns.map((column) => (
+            <col
+              key={column.column}
+              style={{
+                width: column.width ? `${Math.max(56, Math.round(column.width * 8))}px` : '96px',
+              }}
+            />
+          ))}
+        </colgroup>
+        <tbody>
+          {preview.rows.map((row) => (
+            <tr key={row.rowNumber} style={{ height: row.height ? `${row.height}px` : undefined }}>
+              {row.cells.map((cell) => (
+                <td
+                  key={`${row.rowNumber}-${cell.column}`}
+                  colSpan={cell.colSpan}
+                  rowSpan={cell.rowSpan}
+                  className="px-2 py-1.5 align-top"
+                  style={previewCellStyle(cell.style)}
+                >
+                  {cell.value || '\u00A0'}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+interface DashboardOverview {
+  documents: Estimate[];
+  warehouseItems: WarehouseItem[];
+  requests: MaterialRequest[];
+  alerts: Alert[];
+}
+
+interface DashboardUiState {
+  documentName: string;
+  excelFile: File | null;
+  statusMessage: string;
+  lastImportSummary: EstimateImportSummary | null;
+  importJobId: string | null;
+  previewMode: 'exact';
+}
+
+type DashboardUiAction =
+  | { type: 'setDocumentName'; value: string }
+  | { type: 'setExcelFile'; value: File | null }
+  | { type: 'setStatusMessage'; value: string }
+  | { type: 'setLastImportSummary'; value: EstimateImportSummary | null }
+  | { type: 'setImportJob'; value: string | null }
+  | { type: 'setPreviewMode'; value: 'exact' }
+  | { type: 'resetImportForm' };
+
+const initialDashboardUiState: DashboardUiState = {
+  documentName: '',
+  excelFile: null,
+  statusMessage: '',
+  lastImportSummary: null,
+  importJobId: null,
+  previewMode: 'exact',
+};
+
+function dashboardUiReducer(state: DashboardUiState, action: DashboardUiAction): DashboardUiState {
+  switch (action.type) {
+    case 'setDocumentName':
+      return { ...state, documentName: action.value };
+    case 'setExcelFile':
+      return { ...state, excelFile: action.value };
+    case 'setStatusMessage':
+      return { ...state, statusMessage: action.value };
+    case 'setLastImportSummary':
+      return { ...state, lastImportSummary: action.value };
+    case 'setImportJob':
+      return { ...state, importJobId: action.value };
+    case 'setPreviewMode':
+      return { ...state, previewMode: action.value };
+    case 'resetImportForm':
+      return { ...state, documentName: '', excelFile: null };
+    default:
+      return state;
+  }
+}
+
+async function fetchDashboardOverview(projectId: string): Promise<DashboardOverview> {
+  const [documentsRes, warehouseRes, requestsRes, alertsRes] = await Promise.all([
+    api.get<Paginated<Estimate>>(`/estimates?projectId=${projectId}&page=1&limit=8`),
+    api.get<Paginated<WarehouseItem>>(`/warehouse?projectId=${projectId}&page=1&limit=100`),
+    api.get<Paginated<MaterialRequest>>(`/material-requests?projectId=${projectId}&page=1&limit=20`),
+    api.get<Paginated<Alert>>(`/alerts?projectId=${projectId}&page=1&limit=20`),
+  ]);
+
+  return {
+    documents: documentsRes.items ?? [],
+    warehouseItems: warehouseRes.items ?? [],
+    requests: requestsRes.items ?? [],
+    alerts: alertsRes.items ?? [],
+  };
 }
 
 export function DashboardPage() {
   const { currentProject, t, language } = useApp();
-  const [loading, setLoading] = useState(true);
-  const [importing, setImporting] = useState(false);
-  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
-  const [documents, setDocuments] = useState<Estimate[]>([]);
-  const [warehouseItems, setWarehouseItems] = useState<WarehouseItem[]>([]);
-  const [requests, setRequests] = useState<MaterialRequest[]>([]);
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [documentName, setDocumentName] = useState('');
-  const [excelFile, setExcelFile] = useState<File | null>(null);
-  const [statusMessage, setStatusMessage] = useState('');
-  const [lastImportSummary, setLastImportSummary] = useState<EstimateImportSummary | null>(null);
-
   const projectId = currentProject?.id;
+  const queryClient = useQueryClient();
+  const [uiState, dispatch] = useReducer(dashboardUiReducer, initialDashboardUiState);
 
-  const loadOverview = useCallback(async () => {
-    if (!projectId) {
-      setDocuments([]);
-      setWarehouseItems([]);
-      setRequests([]);
-      setAlerts([]);
-      setLoading(false);
+  const overviewQuery = useQuery({
+    queryKey: ['dashboard-overview', projectId],
+    queryFn: () => fetchDashboardOverview(projectId!),
+    enabled: Boolean(projectId),
+  });
+
+  const documents = overviewQuery.data?.documents ?? [];
+  const warehouseItems = overviewQuery.data?.warehouseItems ?? [];
+  const requests = overviewQuery.data?.requests ?? [];
+  const alerts = overviewQuery.data?.alerts ?? [];
+  const latestDocument = documents[0] ?? null;
+
+  const latestEstimateQuery = useQuery({
+    queryKey: ['estimate-preview', latestDocument?.id],
+    queryFn: () => api.get<Estimate>(`/estimates/${latestDocument!.id}`),
+    enabled: Boolean(latestDocument?.id),
+  });
+
+  const importStatusQuery = useQuery({
+    queryKey: ['estimate-import-status', uiState.importJobId],
+    queryFn: () => api.get<EstimateWorkbookImportStatus>(`/estimates/import-status/${uiState.importJobId!}`),
+    enabled: Boolean(uiState.importJobId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === 'COMPLETED' || status === 'FAILED' ? false : 1500;
+    },
+  });
+
+  useEffect(() => {
+    const importStatus = importStatusQuery.data;
+    if (!importStatus || !uiState.importJobId) return;
+
+    if (importStatus.status === 'COMPLETED' && importStatus.estimateId) {
+      dispatch({ type: 'setImportJob', value: null });
+      dispatch({ type: 'setLastImportSummary', value: importStatus.summary ?? null });
+      dispatch({ type: 'setStatusMessage', value: t('Excel import completed') });
+
+      void (async () => {
+        const estimate = await api.get<Estimate>(`/estimates/${importStatus.estimateId}`);
+        queryClient.setQueryData(['estimate-preview', estimate.id], estimate);
+        await queryClient.invalidateQueries({ queryKey: ['dashboard-overview', projectId] });
+      })();
       return;
     }
 
-    setLoading(true);
-    try {
-      const [documentsRes, warehouseRes, requestsRes, alertsRes] = await Promise.all([
-        api.get<Paginated<Estimate>>(`/estimates?projectId=${projectId}&page=1&limit=8`),
-        api.get<Paginated<WarehouseItem>>(`/warehouse?projectId=${projectId}&page=1&limit=100`),
-        api.get<Paginated<MaterialRequest>>(`/material-requests?projectId=${projectId}&page=1&limit=20`),
-        api.get<Paginated<Alert>>(`/alerts?projectId=${projectId}&page=1&limit=20`),
-      ]);
-
-      setDocuments(documentsRes.items ?? []);
-      setWarehouseItems(warehouseRes.items ?? []);
-      setRequests(requestsRes.items ?? []);
-      setAlerts(alertsRes.items ?? []);
-    } catch (error) {
-      setStatusMessage(errorMessage(error, 'Failed to load workbench data'));
-    } finally {
-      setLoading(false);
+    if (importStatus.status === 'FAILED') {
+      dispatch({ type: 'setImportJob', value: null });
+      dispatch({
+        type: 'setStatusMessage',
+        value: `${t('Excel import failed')}: ${importStatus.error || t('Unknown error')}`,
+      });
+      return;
     }
-  }, [projectId]);
 
-  useEffect(() => {
-    void loadOverview();
-  }, [loadOverview]);
+    if (importStatus.status === 'QUEUED') {
+      dispatch({ type: 'setStatusMessage', value: t('Excel import queued. Processing in background...') });
+      return;
+    }
 
-  async function downloadTemplate() {
-    setDownloadingTemplate(true);
-    setStatusMessage('');
+    dispatch({ type: 'setStatusMessage', value: t('Excel import in progress...') });
+  }, [importStatusQuery.data, projectId, queryClient, t, uiState.importJobId]);
 
-    try {
-      const { blob, fileName } = await api.download('/estimates/template');
+  const downloadTemplateMutation = useMutation({
+    mutationFn: () => api.download('/estimates/template'),
+    onSuccess: ({ blob, fileName }) => {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       link.download = fileName;
       link.click();
       URL.revokeObjectURL(url);
-      setStatusMessage(t('Template downloaded successfully'));
-    } catch (error) {
-      setStatusMessage(errorMessage(error, t('Template download failed')));
-    } finally {
-      setDownloadingTemplate(false);
-    }
-  }
+    },
+    onError: (error) => {
+      dispatch({ type: 'setStatusMessage', value: errorMessage(error, t('Template download failed')) });
+    },
+  });
 
-  async function importExcel() {
-    if (!projectId || !documentName || !excelFile) return;
+  const importExcelMutation = useMutation({
+    mutationFn: async () => {
+      if (!projectId || !uiState.documentName || !uiState.excelFile) {
+        throw new Error(t('Upload Excel file (.xlsx, .xls)'));
+      }
 
-    setImporting(true);
-    setStatusMessage(t('Processing...'));
-
-    try {
       const formData = new FormData();
       formData.set('projectId', projectId);
-      formData.set('name', documentName);
-      formData.set('file', excelFile);
-      const created = await api.postForm<EstimateWorkbookImportResult>('/estimates/import-workbook', formData);
+      formData.set('name', uiState.documentName);
+      formData.set('file', uiState.excelFile);
+      return api.postForm<EstimateWorkbookImportResult>('/estimates/import-workbook', formData);
+    },
+    onMutate: () => {
+      dispatch({ type: 'setStatusMessage', value: '' });
+    },
+    onSuccess: (created) => {
+      dispatch({ type: 'resetImportForm' });
+      dispatch({ type: 'setLastImportSummary', value: null });
+      dispatch({ type: 'setImportJob', value: created.jobId });
+      dispatch({ type: 'setStatusMessage', value: t('Excel import queued. Processing in background...') });
+    },
+    onError: (error) => {
+      dispatch({
+        type: 'setStatusMessage',
+        value: `${t('Excel import failed')}: ${errorMessage(error, t('Unknown error'))}`,
+      });
+    },
+  });
 
-      setDocumentName('');
-      setExcelFile(null);
-      setLastImportSummary(created.summary);
-      setStatusMessage(
-        `${t('Imported')}: ${created.summary.sectionsCount} ${t('sections')}, ${created.summary.workRowsCount} ${t('work rows')}, ${created.summary.resourceRowsCount} ${t('resource rows')}`,
-      );
-      await loadOverview();
-    } catch (error) {
-      setStatusMessage(`${t('Excel import failed')}: ${errorMessage(error, t('Unknown error'))}`);
-    } finally {
-      setImporting(false);
-    }
-  }
-
-  const latestDocument = documents[0] ?? null;
+  const loading = overviewQuery.isLoading;
+  const loadError = overviewQuery.error ? errorMessage(overviewQuery.error, 'Failed to load workbench data') : '';
+  const latestEstimate = latestEstimateQuery.data ?? null;
+  const latestWorkbookPreview = latestEstimate?.workbookPreview ?? null;
   const importedLines = documents.reduce((sum, item) => sum + (item._count?.lines ?? 0), 0);
   const lowStockItems = warehouseItems.filter((item) => item.status === 'LOW' || item.status === 'OUT');
   const unresolvedAlerts = alerts.filter((item) => item.status !== 'RESOLVED');
@@ -293,68 +445,6 @@ export function DashboardPage() {
   const m29Ready = Boolean(latestDocument) && criticalAlerts.length === 0 && lowStockItems.length === 0;
   const workflowChecks = [Boolean(latestDocument), lowStockItems.length === 0, criticalAlerts.length === 0];
   const readinessScore = Math.round((workflowChecks.filter(Boolean).length / workflowChecks.length) * 100);
-
-  const attentionItems = useMemo(() => {
-    const items: Array<{
-      title: string;
-      detail: string;
-      tone: 'good' | 'warn';
-      to: string;
-      action: string;
-    }> = [];
-
-    if (!latestDocument) {
-      items.push({
-        title: 'Import the current cost plan',
-        detail: 'The workbench has no active smeta workbook for this project.',
-        tone: 'warn',
-        to: '/app/estimate',
-        action: 'Open estimate',
-      });
-    }
-
-    if (lowStockItems.length > 0) {
-      items.push({
-        title: `${lowStockItems.length} stock items need review`,
-        detail: 'Inventory balance is low or out on materials linked to site execution.',
-        tone: 'warn',
-        to: '/app/warehouse',
-        action: 'Open warehouse',
-      });
-    }
-
-    if (openRequests.length > 0) {
-      items.push({
-        title: `${openRequests.length} material requests are still open`,
-        detail: 'Field demand is waiting on warehouse confirmation or fulfillment.',
-        tone: 'warn',
-        to: '/app/material-requests',
-        action: 'Review requests',
-      });
-    }
-
-    if (criticalAlerts.length > 0) {
-      items.push({
-        title: `${criticalAlerts.length} critical alerts need action`,
-        detail: 'Resolve blockers before closing the current reporting period.',
-        tone: 'warn',
-        to: '/app/alerts',
-        action: 'Open alerts',
-      });
-    }
-
-    if (items.length === 0) {
-      items.push({
-        title: 'Project flow looks healthy',
-        detail: 'No critical blockers are visible across smeta, warehouse, and period control.',
-        tone: 'good',
-        to: '/app/reports',
-        action: 'Open reports',
-      });
-    }
-
-    return items.slice(0, 4);
-  }, [criticalAlerts.length, latestDocument, lowStockItems.length, openRequests.length]);
 
   if (!projectId) {
     return (
@@ -382,7 +472,7 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
+      <div className="grid gap-4">
         <Card>
           <CardHeader className="gap-4">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -445,31 +535,6 @@ export function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Attention queue</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {attentionItems.map((item) => (
-              <div key={item.title} className="rounded-xl border p-4">
-                <div className="flex items-start gap-3">
-                  {item.tone === 'good' ? (
-                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-500" />
-                  ) : (
-                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium">{item.title}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{item.detail}</p>
-                    <Button asChild variant="link" className="mt-2 h-auto px-0">
-                      <Link to={item.to}>{item.action}</Link>
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -529,271 +594,106 @@ export function DashboardPage() {
         />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <Tabs defaultValue="smeta" className="h-full">
-          <Card className="flex h-full flex-col">
-            <CardHeader className="pb-0">
-              <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="smeta">Smeta</TabsTrigger>
-                  <TabsTrigger value="warehouse">Warehouse</TabsTrigger>
-                  <TabsTrigger value="m29">M-29</TabsTrigger>
-              </TabsList>
-            </CardHeader>
-            <CardContent className="flex-1 pt-4">
-              <TabsContent value="smeta" className="mt-0">
-                  <WorkflowStage
-                    step="01"
-                    title="Smeta ingestion"
-                    icon={FileSpreadsheet}
-                    status={latestDocument ? 'Document imported' : 'Waiting for workbook'}
-                    hint={latestDocument ? `Latest file: ${latestDocument.name}` : 'Import the current cost plan to activate downstream workflow.'}
-                    metrics={[
-                      { label: t('Imported Documents'), value: documents.length },
-                      { label: t('Lines'), value: formatNumber(importedLines) },
-                      { label: 'Latest import', value: latestDocument ? formatDate(latestDocument.createdAt) : '-' },
-                    ]}
-                    actionLabel="Open smeta"
-                    actionTo="/app/estimate"
-                  >
-                    <div className="space-y-4">
-                      <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-                        <Input
-                          value={documentName}
-                          onChange={(event) => setDocumentName(event.target.value)}
-                          placeholder={t('Document Name *')}
-                        />
-                        <Button variant="outline" onClick={downloadTemplate} disabled={downloadingTemplate}>
-                          <Download className="mr-2 h-4 w-4" />
-                          {downloadingTemplate ? t('Preparing template...') : t('Download Excel Template')}
-                        </Button>
-                      </div>
-                      <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-                        <Input
-                          type="file"
-                          accept=".xlsx,.xls"
-                          onChange={(event) => setExcelFile(event.target.files?.[0] || null)}
-                        />
-                        <Button onClick={importExcel} disabled={!documentName || !excelFile || importing}>
-                          <Upload className="mr-2 h-4 w-4" />
-                          {importing ? t('Processing...') : t('Import Excel File')}
-                        </Button>
-                      </div>
-                      {excelFile ? (
-                        <p className="text-xs text-muted-foreground">{t('Selected')}: {excelFile.name}</p>
-                      ) : null}
-                      {lastImportSummary ? (
-                        <div className="flex flex-wrap gap-2">
-                          <Badge variant="secondary">{lastImportSummary.sectionsCount} {t('sections')}</Badge>
-                          <Badge variant="secondary">{lastImportSummary.workRowsCount} {t('work rows')}</Badge>
-                          <Badge variant="secondary">{lastImportSummary.resourceRowsCount} {t('resource rows')}</Badge>
-                          <Badge variant={lastImportSummary.warningsCount ? 'warning' : 'success'}>
-                            {lastImportSummary.warningsCount} {t('warnings')}
-                          </Badge>
-                        </div>
-                      ) : null}
-                    </div>
-                  </WorkflowStage>
-              </TabsContent>
-              <TabsContent value="warehouse" className="mt-0">
-                  <WorkflowStage
-                    step="02"
-                    title="Warehouse control"
-                    icon={Boxes}
-                    status={lowStockItems.length ? 'Stock review required' : 'Warehouse ready'}
-                    hint={lowStockItems.length ? 'Low or empty balances can break field progress and distort month-end write-off.' : 'Material movement looks stable for the current period.'}
-                    metrics={[
-                      { label: t('Stock Items'), value: warehouseItems.length },
-                      { label: 'Low / Out', value: lowStockItems.length },
-                      { label: t('Pending Confirmations'), value: openRequests.length },
-                    ]}
-                    actionLabel="Open warehouse"
-                    actionTo="/app/warehouse"
-                  >
-                    <div className="space-y-3">
-                      {lowStockItems.slice(0, 3).map((item) => (
-                        <div key={item.id} className="flex items-center justify-between rounded-xl border px-4 py-3">
-                          <div className="min-w-0">
-                            <p className="truncate font-medium">{item.material?.name || item.materialId}</p>
-                            <p className="text-sm text-muted-foreground">
-                              Balance {formatNumber(item.currentBalance)} • Available {formatNumber(item.availableQuantity ?? item.currentBalance)}
-                            </p>
-                          </div>
-                          <Badge variant={item.status === 'OUT' ? 'danger' : 'warning'}>
-                            {enumLabel(item.status || 'NORMAL', language)}
-                          </Badge>
-                        </div>
-                      ))}
-                      {lowStockItems.length === 0 ? (
-                        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-400">
-                          No low-stock materials are visible on the current warehouse snapshot.
-                        </div>
-                      ) : null}
-                    </div>
-                  </WorkflowStage>
-              </TabsContent>
-              <TabsContent value="m29" className="mt-0">
-                  <WorkflowStage
-                    step="03"
-                    title="M-29 readiness"
-                    icon={ClipboardCheck}
-                    status={m29Ready ? 'Ready to reconcile' : 'Closeout blockers detected'}
-                    hint={m29Ready ? 'The project is in a good state to reconcile planned quantities, stock movement, and month-end write-off.' : 'Clear the blockers below before turning this period into an M-29 package.'}
-                    metrics={[
-                      { label: 'Smeta', value: latestDocument ? 'ready' : 'missing' },
-                      { label: t('Warehouse'), value: lowStockItems.length ? 'review' : 'ready' },
-                      { label: t('Alerts'), value: criticalAlerts.length ? `${criticalAlerts.length} critical` : 'clear' },
-                    ]}
-                    actionLabel="Open reports"
-                    actionTo="/app/reports"
-                  >
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="rounded-xl border p-4">
-                        <p className="text-sm font-medium">What the month-end flow needs</p>
-                        <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-                          <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-500" /> Current smeta document imported</li>
-                          <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-500" /> Warehouse movements reviewed</li>
-                          <li className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-500" /> Variances and critical alerts resolved</li>
-                        </ul>
-                      </div>
-                      <div className="rounded-xl border p-4">
-                        <p className="text-sm font-medium">Current blockers</p>
-                        <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                          <p>{latestDocument ? `Latest workbook: ${latestDocument.name}` : 'No smeta workbook imported yet.'}</p>
-                          <p>{lowStockItems.length ? `${lowStockItems.length} warehouse items are below safe balance.` : 'Warehouse balance checks are clean.'}</p>
-                          <p>{criticalAlerts.length ? `${criticalAlerts.length} critical alerts are unresolved.` : 'No critical alert is blocking closeout.'}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </WorkflowStage>
-              </TabsContent>
-            </CardContent>
-          </Card>
-        </Tabs>
+      <div className="space-y-4">
+        <WorkflowStage
+          step="01"
+          title="Smeta ingestion"
+          icon={FileSpreadsheet}
+          status={latestDocument ? 'Document imported' : 'Waiting for workbook'}
+          hint={latestDocument ? `Latest file: ${latestDocument.name}` : 'Import the current cost plan to activate downstream workflow.'}
+          metrics={[
+            { label: t('Imported Documents'), value: documents.length },
+            { label: t('Lines'), value: formatNumber(importedLines) },
+            { label: 'Latest import', value: latestDocument ? formatDate(latestDocument.createdAt) : '-' },
+          ]}
+          actionLabel="Open smeta"
+          actionTo="/app/estimate"
+        >
+          <div className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+              <Input
+                value={uiState.documentName}
+                onChange={(event) => dispatch({ type: 'setDocumentName', value: event.target.value })}
+                placeholder={t('Document Name *')}
+              />
+              <Button
+                variant="outline"
+                onClick={() => downloadTemplateMutation.mutate()}
+                disabled={downloadTemplateMutation.isPending}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                {downloadTemplateMutation.isPending ? t('Preparing template...') : t('Download Excel Template')}
+              </Button>
+            </div>
+            <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+              <Input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={(event) => dispatch({ type: 'setExcelFile', value: event.target.files?.[0] || null })}
+              />
+              <Button
+                onClick={() => importExcelMutation.mutate()}
+                disabled={!uiState.documentName || !uiState.excelFile || importExcelMutation.isPending || Boolean(uiState.importJobId)}
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                {importExcelMutation.isPending || uiState.importJobId ? t('Processing...') : t('Import Excel File')}
+              </Button>
+            </div>
+            {uiState.excelFile ? (
+              <p className="text-xs text-muted-foreground">{t('Selected')}: {uiState.excelFile.name}</p>
+            ) : null}
+            {uiState.lastImportSummary ? (
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="secondary">{uiState.lastImportSummary.sectionsCount} {t('sections')}</Badge>
+                <Badge variant="secondary">{uiState.lastImportSummary.workRowsCount} {t('work rows')}</Badge>
+                <Badge variant="secondary">{uiState.lastImportSummary.resourceRowsCount} {t('resource rows')}</Badge>
+                <Badge variant={uiState.lastImportSummary.warningsCount ? 'warning' : 'success'}>
+                  {uiState.lastImportSummary.warningsCount} {t('warnings')}
+                </Badge>
+              </div>
+            ) : null}
 
-        <div className="space-y-4">
-          <Card className="h-full">
-            <CardHeader>
-              <CardTitle className="text-base">Recent signals</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {latestDocument ? (
-                <div className="rounded-xl border p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-medium">{latestDocument.name}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {t('Imported on')}: {formatDate(latestDocument.createdAt)}
-                      </p>
-                    </div>
-                    <Badge variant="info">{latestDocument._count?.lines ?? 0} {t('lines')}</Badge>
+            {latestDocument ? (
+              <div className="space-y-3">
+                <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <p className="text-sm font-medium">{t('Exact Preview')}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t('Exact workbook preview with original Excel text and columns')}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="outline">{latestDocument.name}</Badge>
+                    {latestWorkbookPreview?.sheetName ? <Badge variant="secondary">{latestWorkbookPreview.sheetName}</Badge> : null}
                   </div>
                 </div>
-              ) : null}
 
-              {alerts.slice(0, 3).map((item) => (
-                <div key={item.id} className="rounded-xl border p-4">
-                  <div className="flex items-start gap-3">
-                    <Bell className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-medium">{item.title}</p>
-                        <Badge variant={item.severity === 'CRITICAL' ? 'danger' : item.severity === 'WARNING' ? 'warning' : 'info'}>
-                          {enumLabel(item.severity, language)}
-                        </Badge>
-                      </div>
-                      <p className="mt-1 text-sm text-muted-foreground">{item.message}</p>
-                    </div>
+                {latestEstimateQuery.isLoading ? (
+                  <div className="rounded-xl border bg-muted/20 px-4 py-8 text-sm text-muted-foreground">
+                    {t('Loading workbook preview...')}
                   </div>
-                </div>
-              ))}
-
-              {!latestDocument && alerts.length === 0 ? (
-                <div className="rounded-xl border p-4 text-sm text-muted-foreground">
-                  No recent project signals yet. Import smeta or start moving stock to activate the workbench.
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
-
-          {statusMessage ? (
-            <Card>
-              <CardContent className="p-4 text-sm text-muted-foreground">{statusMessage}</CardContent>
-            </Card>
-          ) : null}
-        </div>
-      </div>
-
-      <Card>
-        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <CardTitle className="text-base">Operational overview</CardTitle>
-            <p className="text-sm text-muted-foreground">Recent estimate imports, field demand, and warehouse pressure in one table.</p>
+                ) : latestEstimateQuery.error ? (
+                  <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-4 text-sm text-destructive">
+                    {t('Failed to load cost plan preview')}
+                  </div>
+                ) : latestWorkbookPreview ? (
+                  <WorkbookPreviewTable preview={latestWorkbookPreview} />
+                ) : (
+                  <div className="rounded-xl border bg-muted/20 px-4 py-8 text-sm text-muted-foreground">
+                    {t('Workbook preview is not available for this document. Re-import the workbook to generate an exact 1:1 preview.')}
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
-          <Button asChild variant="outline">
-            <Link to="/app/estimate">
-              <FileSpreadsheet className="mr-2 h-4 w-4" />
-              Open estimate workspace
-            </Link>
-          </Button>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Area</TableHead>
-                <TableHead>Item</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Detail</TableHead>
-                <TableHead className="text-right">Date</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {latestDocument ? (
-                <TableRow>
-                  <TableCell className="font-medium">Smeta</TableCell>
-                  <TableCell>{latestDocument.name}</TableCell>
-                  <TableCell>
-                    <Badge variant="success">Imported</Badge>
-                  </TableCell>
-                  <TableCell>{latestDocument._count?.lines ?? 0} {t('lines')}</TableCell>
-                  <TableCell className="text-right">{formatDate(latestDocument.createdAt)}</TableCell>
-                </TableRow>
-              ) : null}
-              {openRequests.slice(0, 2).map((request) => (
-                <TableRow key={request.id}>
-                  <TableCell className="font-medium">Request</TableCell>
-                  <TableCell>{request.purpose || request.materialId}</TableCell>
-                  <TableCell>
-                    <Badge variant="warning">{enumLabel(request.status, language)}</Badge>
-                  </TableCell>
-                  <TableCell>{formatNumber(request.quantity)} requested</TableCell>
-                  <TableCell className="text-right">{request.requestedByUser?.fullName || request.requestedBy}</TableCell>
-                </TableRow>
-              ))}
-              {lowStockItems.slice(0, 2).map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="font-medium">Warehouse</TableCell>
-                  <TableCell>{item.material?.name || item.materialId}</TableCell>
-                  <TableCell>
-                    <Badge variant={item.status === 'OUT' ? 'danger' : 'warning'}>
-                      {enumLabel(item.status || 'NORMAL', language)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>Balance {formatNumber(item.currentBalance)}</TableCell>
-                  <TableCell className="text-right">-</TableCell>
-                </TableRow>
-              ))}
-              {latestDocument === null && openRequests.length === 0 && lowStockItems.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                    No operational items yet.
-                  </TableCell>
-                </TableRow>
-              ) : null}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+        </WorkflowStage>
+
+        {(uiState.statusMessage || loadError) ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">{loadError || uiState.statusMessage}</CardContent>
+          </Card>
+        ) : null}
+      </div>
 
       {loading ? (
         <div className="rounded-xl border bg-muted/20 px-6 py-8 text-sm text-muted-foreground">

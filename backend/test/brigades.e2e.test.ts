@@ -56,7 +56,7 @@ describe('Brigades & Work Logs E2E', () => {
   it('creates a work log for the brigade', async () => {
     const res = await ctx.request()
       .post('/work-logs')
-      .set('Authorization', `Bearer ${ctx.proab.token}`)
+      .set('Authorization', `Bearer ${ctx.prorab.token}`)
       .send({ brigadeId, projectId: ctx.projectId, workDate: new Date().toISOString(), workDescription: 'Foundation pouring', workerCount: 8, hoursWorked: 64, outputProgress: 25 });
     expect(res.status).toBe(201);
     expect(res.body.hoursWorked).toBe(64);

@@ -28,10 +28,10 @@ describe('Dashboard & Alerts E2E', () => {
     expect(res.body.totalPlannedCost).toBeDefined();
   });
 
-  it('proab gets dashboard without financial data', async () => {
+  it('prorab gets dashboard without financial data', async () => {
     const res = await ctx.request()
       .get(`/dashboard/summary?projectId=${ctx.projectId}`)
-      .set('Authorization', `Bearer ${ctx.proab.token}`);
+      .set('Authorization', `Bearer ${ctx.prorab.token}`);
     expect(res.status).toBe(200);
     expect(res.body.totalPlannedCost).toBeUndefined();
   });

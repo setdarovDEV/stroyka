@@ -9,9 +9,9 @@ type FinancialFields = {
   plannedTotalPrice?: unknown;
 };
 
-function stripFinancialForProab<T extends FinancialFields>(user: AuthUser, data: T[]): Array<T | Omit<T, keyof FinancialFields>>;
-function stripFinancialForProab<T extends FinancialFields>(user: AuthUser, data: T): T | Omit<T, keyof FinancialFields>;
-function stripFinancialForProab<T extends FinancialFields>(user: AuthUser, data: T | T[]) {
+function stripFinancialForProrab<T extends FinancialFields>(user: AuthUser, data: T[]): Array<T | Omit<T, keyof FinancialFields>>;
+function stripFinancialForProrab<T extends FinancialFields>(user: AuthUser, data: T): T | Omit<T, keyof FinancialFields>;
+function stripFinancialForProrab<T extends FinancialFields>(user: AuthUser, data: T | T[]) {
   if (user?.role === 'ADMIN') return data;
   if (Array.isArray(data)) return data.map((item) => stripFinancialFields(item));
   return stripFinancialFields(data);
@@ -80,7 +80,7 @@ export class EstimateLinesService {
       this.prisma.estimateLine.count({ where }),
     ]);
 
-    return { items: stripFinancialForProab(user, items), total, page, limit, pages: Math.ceil(total / limit) };
+    return { items: stripFinancialForProrab(user, items), total, page, limit, pages: Math.ceil(total / limit) };
   }
 
   async findOne(id: string, user: AuthUser) {
@@ -88,7 +88,7 @@ export class EstimateLinesService {
       where: { id, ...this.access.projectWhere(user) },
     });
     if (!item) throw new NotFoundException('Estimate line not found');
-    return stripFinancialForProab(user, item);
+    return stripFinancialForProrab(user, item);
   }
 
   async update(id: string, dto: UpdateEstimateLineDto, user: AuthUser) {

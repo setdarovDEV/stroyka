@@ -3,12 +3,24 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { EstimatesService } from './estimates.service';
 import { CreateEstimateDto, ImportEstimateDto, ImportEstimateWorkbookDto } from './dto/estimate.dto';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import type { AuthUser } from '../common/tenant-access.service';
+import { AuthUser, TenantAccessService } from '../common/tenant-access.service';
 import type { Response } from 'express';
+import { randomUUID } from 'crypto';
+import { SmetaQueueService } from './smeta-queue.service';
+import { SmetaBufferStore } from './smeta-buffer-store';
+import { SmetaJobStatus } from './smeta-queue.constants';
 
 @Controller('estimates')
 export class EstimatesController {
-  constructor(private estimatesService: EstimatesService) {}
+  private bufferStore: SmetaBufferStore;
+
+  constructor(
+    private estimatesService: EstimatesService,
+    private access: TenantAccessService,
+    private smetaQueue: SmetaQueueService,
+  ) {
+    this.bufferStore = new SmetaBufferStore();
+  }
 
   @Post()
   create(@Body() dto: CreateEstimateDto, @CurrentUser() user: AuthUser) {
@@ -22,13 +34,41 @@ export class EstimatesController {
 
   @Post('import-workbook')
   @UseInterceptors(FileInterceptor('file'))
-  importWorkbook(
+  async importWorkbook(
     @UploadedFile() file: { buffer?: Buffer } | undefined,
     @Body() dto: ImportEstimateWorkbookDto,
     @CurrentUser() user: AuthUser,
   ) {
     if (!file?.buffer?.length) throw new BadRequestException('Workbook file is required');
-    return this.estimatesService.importWorkbook(dto, file.buffer, user);
+    await this.access.requireProject(user, dto.projectId);
+
+    const estimateId = randomUUID();
+    const bufferKey = randomUUID();
+
+    await this.bufferStore.save(bufferKey, file.buffer);
+
+    await this.estimatesService.createPendingWorkbook(estimateId, dto, user);
+
+    const jobId = await this.smetaQueue.enqueue({
+      estimateId,
+      projectId: dto.projectId,
+      tenantId: user.tenantId,
+      userId: user.sub,
+      name: dto.name,
+      description: dto.description,
+      bufferKey,
+      role: user.role,
+    });
+
+    return { jobId, estimateId, status: SmetaJobStatus.QUEUED };
+  }
+
+  @Get('import-status/:jobId')
+  async importStatus(
+    @Param('jobId') jobId: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.smetaQueue.getStatus(jobId);
   }
 
   @Get('template')

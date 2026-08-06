@@ -116,18 +116,18 @@ describe('Reports & Zones E2E', () => {
     expect(res.body.reportType).toBe('FINANCIAL');
   });
 
-  it('proab cannot generate a financial report', async () => {
+  it('prorab cannot generate a financial report', async () => {
     const res = await ctx.request()
       .post('/reports/export')
-      .set('Authorization', `Bearer ${ctx.proab.token}`)
+      .set('Authorization', `Bearer ${ctx.prorab.token}`)
       .send({ projectId: ctx.projectId, reportType: 'FINANCIAL', period: 'FULL_PROJECT' });
     expect(res.status).toBe(403);
   });
 
-  it('proab can generate non-financial reports', async () => {
+  it('prorab can generate non-financial reports', async () => {
     const res = await ctx.request()
       .post('/reports/export')
-      .set('Authorization', `Bearer ${ctx.proab.token}`)
+      .set('Authorization', `Bearer ${ctx.prorab.token}`)
       .send({ projectId: ctx.projectId, reportType: 'ALERT_RISK', period: 'FULL_PROJECT' });
     expect(res.status).toBe(201);
     expect(res.body.reportType).toBe('ALERT_RISK');

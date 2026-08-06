@@ -124,10 +124,10 @@ describe('Estimates E2E', () => {
     }
   });
 
-  it('proab also gets estimate lines (financial stripping should happen on frontend/backend)', async () => {
+  it('prorab also gets estimate lines (financial stripping should happen on frontend/backend)', async () => {
     const res = await ctx.request()
       .get('/estimate-lines')
-      .set('Authorization', `Bearer ${ctx.proab.token}`);
+      .set('Authorization', `Bearer ${ctx.prorab.token}`);
     expect(res.status).toBe(200);
   });
 });

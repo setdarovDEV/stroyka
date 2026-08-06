@@ -9,7 +9,7 @@ datasource db {
 
 enum Role {
   ADMIN
-  PROAB
+  PRORAB
 }
 
 enum UserStatus {
@@ -181,7 +181,7 @@ model User {
   email         String?
   phone         String?
   passwordHash  String
-  role          Role      @default(PROAB)
+  role          Role      @default(PRORAB)
   status        UserStatus @default(ACTIVE)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -238,7 +238,7 @@ model ProjectUserAssignment {
   id        String   @id @default(cuid())
   projectId String
   userId    String
-  role      Role     @default(PROAB)
+  role      Role     @default(PRORAB)
   createdAt DateTime @default(now())
 
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)

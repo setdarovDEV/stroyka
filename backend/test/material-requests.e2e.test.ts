@@ -9,10 +9,10 @@ afterAll(async () => { await teardownE2E(); });
 describe('Material Requests E2E', () => {
   let requestId: string;
 
-  it('proab can create a material request', async () => {
+  it('prorab can create a material request', async () => {
     const res = await ctx.request()
       .post('/material-requests')
-      .set('Authorization', `Bearer ${ctx.proab.token}`)
+      .set('Authorization', `Bearer ${ctx.prorab.token}`)
       .send({ projectId: ctx.projectId, materialId: ctx.materialId, quantity: 50, unitId: ctx.unitId, purpose: 'Foundation work' });
     expect(res.status).toBe(201);
     expect(res.body.status).toBe('DRAFT');
@@ -37,10 +37,10 @@ describe('Material Requests E2E', () => {
     expect(res.body.approvedBy).toBe(ctx.admin.id);
   });
 
-  it('proab can view their own requests', async () => {
+  it('prorab can view their own requests', async () => {
     const res = await ctx.request()
-      .get(`/material-requests?projectId=${ctx.projectId}&requestedBy=${ctx.proab.id}`)
-      .set('Authorization', `Bearer ${ctx.proab.token}`);
+      .get(`/material-requests?projectId=${ctx.projectId}&requestedBy=${ctx.prorab.id}`)
+      .set('Authorization', `Bearer ${ctx.prorab.token}`);
     expect(res.status).toBe(200);
     expect(res.body.items.length).toBe(1);
   });
@@ -57,7 +57,7 @@ describe('Material Requests E2E', () => {
   it('can reject a material request', async () => {
     const ask = await ctx.request()
       .post('/material-requests')
-      .set('Authorization', `Bearer ${ctx.proab.token}`)
+      .set('Authorization', `Bearer ${ctx.prorab.token}`)
       .send({ projectId: ctx.projectId, materialId: ctx.materialId, quantity: 10, unitId: ctx.unitId, purpose: 'Test reject' });
     const res = await ctx.request()
       .post(`/material-requests/${ask.body.id}/approve-reject`)

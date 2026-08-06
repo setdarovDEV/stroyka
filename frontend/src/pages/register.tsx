@@ -18,7 +18,7 @@ export function RegisterPage() {
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<Role>('PROAB');
+  const [role, setRole] = useState<Role>('PRORAB');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
@@ -103,7 +103,7 @@ export function RegisterPage() {
                 <div className="space-y-2">
                   <Label htmlFor="role" className="text-xs text-muted-foreground">{t('Role')}</Label>
               <Select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-                    <option value="PROAB">{roleLabel('PROAB', language)}</option>
+                    <option value="PRORAB">{roleLabel('PRORAB', language)}</option>
                     <option value="ADMIN">{roleLabel('ADMIN', language)}</option>
                   </Select>
                 </div>

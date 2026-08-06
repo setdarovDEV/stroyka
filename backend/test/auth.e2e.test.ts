@@ -16,12 +16,12 @@ describe('Auth E2E', () => {
     expect(res.body.user.role).toBe('ADMIN');
   });
 
-  it('logs in with valid proab credentials', async () => {
+  it('logs in with valid prorab credentials', async () => {
     const res = await ctx.request()
       .post('/auth/login')
-      .send({ username: ctx.proab.username, password: ctx.proab.password });
+      .send({ username: ctx.prorab.username, password: ctx.prorab.password });
     expect(res.status).toBe(200);
-    expect(res.body.user.role).toBe('PROAB');
+    expect(res.body.user.role).toBe('PRORAB');
   });
 
   it('rejects login with wrong password', async () => {
@@ -41,7 +41,7 @@ describe('Auth E2E', () => {
   it('registers a new user and returns token', async () => {
     const res = await ctx.request()
       .post('/auth/register')
-      .send({ fullName: 'New User', username: 'newuser_e2e', password: 'password123', role: 'PROAB' });
+      .send({ fullName: 'New User', username: 'newuser_e2e', password: 'password123', role: 'PRORAB' });
     expect(res.status).toBe(201);
     expect(res.body.token).toBeDefined();
     expect(res.body.user.username).toBe('newuser_e2e');
@@ -50,7 +50,7 @@ describe('Auth E2E', () => {
   it('rejects duplicate username registration', async () => {
     const res = await ctx.request()
       .post('/auth/register')
-      .send({ fullName: 'Dup', username: ctx.admin.username, password: 'password123', role: 'PROAB' });
+      .send({ fullName: 'Dup', username: ctx.admin.username, password: 'password123', role: 'PRORAB' });
     expect(res.status).toBe(409);
   });
 

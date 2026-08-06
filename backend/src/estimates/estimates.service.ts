@@ -89,6 +89,19 @@ export class EstimatesService {
     });
   }
 
+  async createPendingWorkbook(estimateId: string, dto: ImportEstimateWorkbookDto, user: AuthUser) {
+    return this.prisma.estimate.create({
+      data: {
+        id: estimateId,
+        projectId: dto.projectId,
+        name: dto.name,
+        description: dto.description,
+        workbookPreviewJson: null,
+        createdBy: user.sub,
+      },
+    });
+  }
+
   async importEstimate(dto: ImportEstimateDto, user: AuthUser) {
     await this.access.requireProject(user, dto.projectId);
     const estimate = await this.prisma.estimate.create({

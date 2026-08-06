@@ -83,7 +83,7 @@ async function main() {
         email: 'proab@stroyka.uz',
         phone: '+998901110002',
         passwordHash: proabPass,
-        role: Role.PROAB,
+        role: Role.PRORAB,
         status: UserStatus.ACTIVE,
       },
     }),
@@ -95,7 +95,7 @@ async function main() {
         email: 'warehouse@stroyka.uz',
         phone: '+998901110003',
         passwordHash: proabPass,
-        role: Role.PROAB,
+        role: Role.PRORAB,
         status: UserStatus.INACTIVE,
       },
     }),
@@ -178,7 +178,7 @@ async function main() {
   await prisma.projectUserAssignment.createMany({
     data: projects.flatMap((project) => [
       { projectId: project.id, userId: admin.id, role: Role.ADMIN },
-      { projectId: project.id, userId: proab.id, role: Role.PROAB },
+      { projectId: project.id, userId: proab.id, role: Role.PRORAB },
     ]),
   });
 
@@ -1167,7 +1167,7 @@ async function main() {
     tenant: tenant.slug,
     login: [
       { username: 'admin', password: 'admin123', role: Role.ADMIN },
-      { username: 'proab', password: 'proab123', role: Role.PROAB },
+      { username: 'proab', password: 'proab123', role: Role.PRORAB },
     ],
     counts: {
       users: await prisma.user.count({ where: { tenantId: tenant.id } }),

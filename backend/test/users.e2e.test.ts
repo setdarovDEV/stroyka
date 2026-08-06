@@ -13,17 +13,17 @@ describe('Users E2E', () => {
     const res = await ctx.request()
       .post('/users')
       .set('Authorization', `Bearer ${ctx.admin.token}`)
-      .send({ fullName: 'Test Worker', username: 'worker1', password: 'worker123!', role: 'PROAB', email: 'worker@test.com' });
+      .send({ fullName: 'Test Worker', username: 'worker1', password: 'worker123!', role: 'PRORAB', email: 'worker@test.com' });
     expect(res.status).toBe(201);
     expect(res.body.fullName).toBe('Test Worker');
     createdUserId = res.body.id;
   });
 
-  it('proab cannot create a user', async () => {
+  it('prorab cannot create a user', async () => {
     const res = await ctx.request()
       .post('/users')
-      .set('Authorization', `Bearer ${ctx.proab.token}`)
-      .send({ fullName: 'Bad', username: 'baduser', password: 'bad123!!', role: 'PROAB' });
+      .set('Authorization', `Bearer ${ctx.prorab.token}`)
+      .send({ fullName: 'Bad', username: 'baduser', password: 'bad123!!', role: 'PRORAB' });
     expect(res.status).toBe(403);
   });
 
@@ -46,9 +46,9 @@ describe('Users E2E', () => {
   it('authenticated user can get their own details', async () => {
     const res = await ctx.request()
       .get('/users/me')
-      .set('Authorization', `Bearer ${ctx.proab.token}`);
+      .set('Authorization', `Bearer ${ctx.prorab.token}`);
     expect(res.status).toBe(200);
-    expect(res.body.username).toBe(ctx.proab.username);
+    expect(res.body.username).toBe(ctx.prorab.username);
   });
 
   it('can get a specific user by id', async () => {
@@ -75,10 +75,10 @@ describe('Users E2E', () => {
     expect(res.status).toBe(200);
   });
 
-  it('proab cannot update a user', async () => {
+  it('prorab cannot update a user', async () => {
     const res = await ctx.request()
       .put(`/users/${ctx.admin.id}`)
-      .set('Authorization', `Bearer ${ctx.proab.token}`)
+      .set('Authorization', `Bearer ${ctx.prorab.token}`)
       .send({ fullName: 'Hacked' });
     expect(res.status).toBe(403);
   });

@@ -25,7 +25,7 @@ export function UsersPage() {
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<Role>('PROAB');
+  const [role, setRole] = useState<Role>('PRORAB');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [createError, setCreateError] = useState('');
@@ -52,7 +52,7 @@ export function UsersPage() {
     try {
       await api.post('/users', { fullName, username, password, role, email: email || undefined, phone: phone || undefined });
       setShowCreate(false);
-      setFullName(''); setUsername(''); setPassword(''); setEmail(''); setPhone(''); setRole('PROAB');
+      setFullName(''); setUsername(''); setPassword(''); setEmail(''); setPhone(''); setRole('PRORAB');
       loadUsers();
     } catch (e: unknown) { setCreateError(errorMessage(e, t('Failed to create user'))); }
   }
@@ -131,7 +131,7 @@ export function UsersPage() {
             <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder={t('Username')} />
             <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('Password (min 6 chars)')} />
             <Select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-              <option value="PROAB">{roleLabel('PROAB', language)}</option>
+              <option value="PRORAB">{roleLabel('PRORAB', language)}</option>
               <option value="ADMIN">{roleLabel('ADMIN', language)}</option>
             </Select>
             <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('Email (optional)')} />

@@ -851,7 +851,7 @@ export function translate(language: Language, key: string) {
 
 export function roleLabel(role: string | undefined, language: Language) {
   if (role === 'ADMIN') return translate(language, 'Admin');
-  if (role === 'PROAB') return translate(language, 'Prorab');
+  if (role === 'PRORAB') return translate(language, 'Prorab');
   return role ?? '';
 }
 

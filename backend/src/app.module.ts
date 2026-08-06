@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
 import { PrismaModule } from './prisma/prisma.module';
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './auth/auth.module';
@@ -21,6 +22,11 @@ import { AuditLogModule } from './audit-log/audit-log.module';
 
 @Module({
   imports: [
+    BullModule.forRoot({
+      connection: {
+        url: process.env.REDIS_URL || 'redis://localhost:6379',
+      },
+    }),
     PrismaModule,
     CommonModule,
     AuthModule,

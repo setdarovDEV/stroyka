@@ -47,7 +47,7 @@ describe('Machines & Machine Logs E2E', () => {
   it('creates a machine work log', async () => {
     const res = await ctx.request()
       .post('/machine-logs')
-      .set('Authorization', `Bearer ${ctx.proab.token}`)
+      .set('Authorization', `Bearer ${ctx.prorab.token}`)
       .send({ machineId, projectId: ctx.projectId, workDate: new Date().toISOString(), hoursWorked: 8, description: 'Lifting concrete blocks', operatorName: 'Petrov P.' });
     expect(res.status).toBe(201);
     expect(res.body.hoursWorked).toBe(8);

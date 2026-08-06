@@ -1,6 +1,6 @@
 import type { BadgeProps } from '@/components/ui/badge';
 
-export type Role = 'ADMIN' | 'PROAB';
+export type Role = 'ADMIN' | 'PRORAB';
 export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
 export type ProjectStatus = 'PLANNING' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'CANCELLED';
 export type AlertSeverity = 'INFO' | 'WARNING' | 'CRITICAL';
@@ -229,8 +229,17 @@ export type EstimateImportSummary = {
 };
 
 export type EstimateWorkbookImportResult = {
-  estimate: Estimate;
-  summary: EstimateImportSummary;
+  jobId: string;
+  estimateId: string;
+  status: 'QUEUED' | 'PARSING' | 'STORING' | 'COMPLETED' | 'FAILED';
+};
+
+export type EstimateWorkbookImportStatus = {
+  status: 'QUEUED' | 'PARSING' | 'STORING' | 'COMPLETED' | 'FAILED';
+  progress: number;
+  estimateId?: string;
+  summary?: EstimateImportSummary;
+  error?: string;
 };
 
 export type Alert = {

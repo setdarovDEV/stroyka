@@ -19,10 +19,10 @@ describe('Projects E2E', () => {
     altProjectId = res.body.id;
   });
 
-  it('proab cannot create a project', async () => {
+  it('prorab cannot create a project', async () => {
     const res = await ctx.request()
       .post('/projects')
-      .set('Authorization', `Bearer ${ctx.proab.token}`)
+      .set('Authorization', `Bearer ${ctx.prorab.token}`)
       .send({ name: 'Bad Project' });
     expect(res.status).toBe(403);
   });
@@ -35,10 +35,10 @@ describe('Projects E2E', () => {
     expect(res.body.items.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('proab sees only assigned projects', async () => {
+  it('prorab sees only assigned projects', async () => {
     const res = await ctx.request()
       .get('/projects?page=1&limit=10')
-      .set('Authorization', `Bearer ${ctx.proab.token}`);
+      .set('Authorization', `Bearer ${ctx.prorab.token}`);
     expect(res.status).toBe(200);
     const ids = (res.body.items as { id: string }[]).map((p) => p.id);
     expect(ids).toContain(ctx.projectId);
