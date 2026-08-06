@@ -82,7 +82,27 @@ bun run dev             # starts on http://localhost:5173
 
 ```bash
 cd frontend
-bun run tauri build     # produces Windows/macOS installer
+bun run tauri build     # builds native app for current OS
+```
+
+### 5. Build Windows App
+
+Build on Windows machine:
+
+```bash
+cd frontend
+bun run tauri:build:windows
+```
+
+Cross-build from macOS/Linux to Windows NSIS installer:
+
+```bash
+brew install nsis llvm   # macOS
+cargo install --locked cargo-xwin
+rustup target add x86_64-pc-windows-msvc
+
+cd frontend
+bun run tauri:build:windows:cross
 ```
 
 ## Demo Credentials

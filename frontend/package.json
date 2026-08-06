@@ -12,7 +12,10 @@
     "api:types": "openapi-typescript src/api/openapi.json -o src/api/generated.ts",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "tauri:build:windows": "tauri build --target x86_64-pc-windows-msvc",
+    "tauri:build:windows:arm64": "tauri build --target aarch64-pc-windows-msvc",
+    "tauri:build:windows:cross": "tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc --config src-tauri/tauri.windows.cross.conf.json"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.19",
