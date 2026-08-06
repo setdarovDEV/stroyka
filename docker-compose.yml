@@ -33,6 +33,9 @@ services:
       REDIS_URL: redis://redis:6379
     ports:
       - "3001:3001"
+    networks:
+      - default
+      - dokploy-network
     depends_on:
       - postgres
       - redis
@@ -46,9 +49,16 @@ services:
     container_name: stroyka-frontend
     ports:
       - "8080:80"
+    networks:
+      - default
+      - dokploy-network
     depends_on:
       - backend
 
 volumes:
   stroyka-pgdata:
   stroyka-redisdata:
+
+networks:
+  dokploy-network:
+    external: true
